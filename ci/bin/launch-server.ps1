@@ -21,7 +21,7 @@ if (! ${env:CONFIG_FILE}) {
   }
 }
 
-node "${PSScriptRoot}\..\..\bin\democratic-csi" `
+node "${PSScriptRoot}\..\..\bin\truenas-csi" `
   --log-level "$env:LOG_LEVEL" `
   --driver-config-file "$env:CONFIG_FILE" `
   --csi-version "$env:CSI_VERSION" `

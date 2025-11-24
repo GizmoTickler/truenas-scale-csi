@@ -26,4 +26,4 @@ if [[ "x${CSI_MODE}" != "x" ]]; then
 fi
 
 # > "${LOG_PATH}" 2>&1
-exec ./bin/democratic-csi --log-level debug --driver-config-file "${CONFIG_FILE}" --csi-version "${CSI_VERSION}" --csi-name "driver-test" --server-socket "${CSI_ENDPOINT}" ${EXTRA_ARGS}
+exec ./bin/truenas-csi --log-level debug --driver-config-file "${CONFIG_FILE}" --csi-version "${CSI_VERSION}" --csi-name "driver-test" --server-socket "${CSI_ENDPOINT}" ${EXTRA_ARGS}

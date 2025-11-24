@@ -84,9 +84,11 @@ COPY . .
 
 FROM mcr.microsoft.com/windows/nanoserver:${NANO_BASE_TAG}
 
-LABEL org.opencontainers.image.source https://github.com/democratic-csi/democratic-csi
-LABEL org.opencontainers.image.url https://github.com/democratic-csi/democratic-csi
+LABEL org.opencontainers.image.source https://github.com/GizmoTickler/truenas-scale-csi
+LABEL org.opencontainers.image.url https://github.com/GizmoTickler/truenas-scale-csi
 LABEL org.opencontainers.image.licenses MIT
+LABEL org.opencontainers.image.title "TrueNAS Scale CSI Driver"
+LABEL org.opencontainers.image.description "Kubernetes CSI driver for TrueNAS SCALE"
 
 # if additional dlls are required can copy like this
 #COPY --from=build /Windows/System32/nltest.exe /Windows/System32/nltest.exe
@@ -97,4 +99,4 @@ WORKDIR /app
 # this works for both host-process and non-host-process container semantics
 COPY --from=build /nodejs/node.exe ./bin
 
-ENTRYPOINT [ "bin/node.exe", "--expose-gc", "bin/democratic-csi" ]
+ENTRYPOINT [ "bin/node.exe", "--expose-gc", "bin/truenas-csi" ]

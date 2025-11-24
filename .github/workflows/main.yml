@@ -503,17 +503,17 @@ jobs:
         shell: bash
         run: |
           docker info
-          docker build --pull -f ${{ matrix.file }} --build-arg NANO_BASE_TAG=${{ matrix.nano_base_tag }} --build-arg CORE_BASE_TAG=${{ matrix.core_base_tag }} -t democratic-csi-windows:${GITHUB_RUN_ID}-${{ matrix.core_base_tag }} \
+          docker build --pull -f ${{ matrix.file }} --build-arg NANO_BASE_TAG=${{ matrix.nano_base_tag }} --build-arg CORE_BASE_TAG=${{ matrix.core_base_tag }} -t truenas-csi-windows:${GITHUB_RUN_ID}-${{ matrix.core_base_tag }} \
           --label "org.opencontainers.image.created=$(date -u --iso-8601=seconds)" \
           --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
           .
-          docker inspect democratic-csi-windows:${GITHUB_RUN_ID}-${{ matrix.core_base_tag }}
-          docker save democratic-csi-windows:${GITHUB_RUN_ID}-${{ matrix.core_base_tag }} -o democratic-csi-windows-${{ matrix.core_base_tag }}.tar
+          docker inspect truenas-csi-windows:${GITHUB_RUN_ID}-${{ matrix.core_base_tag }}
+          docker save truenas-csi-windows:${GITHUB_RUN_ID}-${{ matrix.core_base_tag }} -o truenas-csi-windows-${{ matrix.core_base_tag }}.tar
       - name: upload image tar
         uses: actions/upload-artifact@v4
         with:
-          name: democratic-csi-windows-${{ matrix.core_base_tag }}.tar
-          path: democratic-csi-windows-${{ matrix.core_base_tag }}.tar
+          name: truenas-csi-windows-${{ matrix.core_base_tag }}.tar
+          path: truenas-csi-windows-${{ matrix.core_base_tag }}.tar
           retention-days: 1
 
   push-docker-windows:
@@ -528,10 +528,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: democratic-csi-windows-ltsc2019.tar
+          name: truenas-csi-windows-ltsc2019.tar
       - uses: actions/download-artifact@v4
         with:
-          name: democratic-csi-windows-ltsc2022.tar
+          name: truenas-csi-windows-ltsc2022.tar
       - name: push windows images with buildah
         run: |
           #.github/bin/install_latest_buildah.sh

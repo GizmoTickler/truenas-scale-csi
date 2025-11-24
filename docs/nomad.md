@@ -1,12 +1,14 @@
 # Nomad Support
 
-While `democratic-csi` fully implements the CSI spec, Nomad currently supports the CSI in a limited capability. Nomad can utilize CSI volumes, but it can not automatically create, destroy, or manage them in any capacity. Volumes have to be created externally and then registered with Nomad. Once Nomad supports the full spec, all `democratic-csi` features should work out of the box. However, these instructions can be used as a temporary solution.
+> **Note**: This documentation is based on the original [democratic-csi](https://github.com/democratic-csi/democratic-csi) Nomad integration.
 
-These instructions have should work with any share type, but they have only been tested with nfs shares. The detailed discussion can be found at [this issue](https://github.com/democratic-csi/democratic-csi/issues/40).
+While `truenas-scale-csi` fully implements the CSI spec, Nomad currently supports the CSI in a limited capability. Nomad can utilize CSI volumes, but it can not automatically create, destroy, or manage them in any capacity. Volumes have to be created externally and then registered with Nomad. Once Nomad supports the full spec, all `truenas-scale-csi` features should work out of the box. However, these instructions can be used as a temporary solution.
+
+These instructions should work with any share type, but they have only been tested with NFS shares. The detailed discussion can be found at [this issue](https://github.com/democratic-csi/democratic-csi/issues/40).
 
 ## Nomad Jobs
 
-`democratic-csi` has to be deployed on Nomad as a set of jobs. The controller job runs as a single instance. The node job runs on every node and manages mounting the volume.
+`truenas-scale-csi` has to be deployed on Nomad as a set of jobs. The controller job runs as a single instance. The node job runs on every node and manages mounting the volume.
 
 The following job files can be used as an example. Make sure to substitute the config from the [examples](/examples). __The example exposes the CSI gRPC interface! Please secure it in a production environment!__
 
@@ -30,12 +32,12 @@ job "storage-controller" {
       driver = "docker"
 
       config {
-        image = "democraticcsi/democratic-csi:latest"
+        image = "ghcr.io/gizmotickler/truenas-scale-csi:latest"
         ports = ["grpc"]
 
         args = [
           "--csi-version=1.2.0",
-          "--csi-name=org.democratic-csi.nfs",
+          "--csi-name=org.truenas-csi.nfs",
           "--driver-config-file=${NOMAD_TASK_DIR}/driver-config-file.yaml",
           "--log-level=debug",
           "--csi-mode=controller",
@@ -82,11 +84,11 @@ job "storage-node" {
       driver = "docker"
 
       config {
-        image = "democraticcsi/democratic-csi:latest"
+        image = "ghcr.io/gizmotickler/truenas-scale-csi:latest"
 
         args = [
           "--csi-version=1.2.0",
-          "--csi-name=org.democratic-csi.nfs",
+          "--csi-name=org.truenas-csi.nfs",
           "--driver-config-file=${NOMAD_TASK_DIR}/driver-config-file.yaml",
           "--log-level=debug",
           "--csi-mode=node",
@@ -136,7 +138,7 @@ csc -e tcp://<host>:<port> controller create-volume --req-bytes <volume size in 
 
 Output
 ```
-"<volume name>"	<volume size in bytes>	"node_attach_driver"="nfs"	"provisioner_driver"="freenas-nfs"	"server"="<server>"	"share"="<share>"
+"<volume name>"	<volume size in bytes>	"node_attach_driver"="nfs"	"provisioner_driver"="truenas-nfs"	"server"="<server>"	"share"="<share>"
 ```
 
 While the volume can be registered using the [Nomad cli](https://www.nomadproject.io/docs/commands/volume/register), it is easier to use Terraform and the [Nomad provider](https://registry.terraform.io/providers/hashicorp/nomad/latest/docs), mapping the output to the following template.
@@ -165,7 +167,7 @@ resource "nomad_volume" "<volume name>" {
 
   context = {
     node_attach_driver = "nfs"
-    provisioner_driver = "freenas-nfs"
+    provisioner_driver = "truenas-nfs"
     server             = "<server>"
     share              = "<share>"
   }

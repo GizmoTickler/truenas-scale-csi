@@ -15,7 +15,8 @@ const winston = require("winston");
 const bunyan = require("bunyan");
 
 const env = process.env.NODE_ENV || "development";
-let level = process.env.DEMOCRATIC_CSI_LOG_LEVEL || null;
+// Support both new and legacy env var names for backward compatibility
+let level = process.env.TRUENAS_CSI_LOG_LEVEL || process.env.DEMOCRATIC_CSI_LOG_LEVEL || null;
 
 if (!level) {
   if (env == "production") {
@@ -29,7 +30,7 @@ let formatters;
 let defaultMeta;
 if (env == "production") {
   formatters = [winston.format.json()];
-  defaultMeta = { service: "democratic-csi", host: os.hostname() };
+  defaultMeta = { service: "truenas-csi", host: os.hostname() };
 } else {
   formatters = [winston.format.colorize(), winston.format.simple()];
   defaultMeta = {};

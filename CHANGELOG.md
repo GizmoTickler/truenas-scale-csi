@@ -1,3 +1,30 @@
+# v2.0.0
+
+Release 2024-11-24
+
+**Project Rename: democratic-csi → truenas-scale-csi**
+
+This release marks the fork and rename from [democratic-csi](https://github.com/democratic-csi/democratic-csi)
+to truenas-scale-csi. We are grateful to Travis Glenn Hansen and the democratic-csi contributors
+for the excellent foundation this project provides.
+
+**Key Changes:**
+
+- Renamed project from `democratic-csi` to `truenas-scale-csi`
+- Focus exclusively on TrueNAS SCALE 25.04+ with WebSocket JSON-RPC 2.0 API
+- Container images now published to `ghcr.io/gizmotickler/truenas-scale-csi`
+- Binary renamed from `bin/democratic-csi` to `bin/truenas-csi`
+- Added support for `TRUENAS_CSI_*` environment variables (legacy `DEMOCRATIC_CSI_*` still supported)
+- Updated GitHub workflows for GHCR publishing
+- ZFS property names kept as `democratic-csi:*` for backward compatibility with existing volumes
+- Removed legacy SSH-based drivers and other storage backends
+
+**Backward Compatibility:**
+
+- Existing volumes with `democratic-csi:*` ZFS properties will continue to work
+- Legacy `DEMOCRATIC_CSI_*` environment variables are still supported
+- Legacy `democratic-csi.org/*` parameter namespaces are still supported
+
 # v1.9.4
 
 Release 2024-07-06

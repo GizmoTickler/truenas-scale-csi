@@ -42,11 +42,15 @@ RUN rm -rf docker
 ######################
 FROM debian:12-slim
 
-LABEL org.opencontainers.image.source https://github.com/democratic-csi/democratic-csi
-LABEL org.opencontainers.image.url https://github.com/democratic-csi/democratic-csi
+LABEL org.opencontainers.image.source https://github.com/GizmoTickler/truenas-scale-csi
+LABEL org.opencontainers.image.url https://github.com/GizmoTickler/truenas-scale-csi
 LABEL org.opencontainers.image.licenses MIT
+LABEL org.opencontainers.image.title "TrueNAS Scale CSI Driver"
+LABEL org.opencontainers.image.description "Kubernetes CSI driver for TrueNAS SCALE"
 
 ENV DEBIAN_FRONTEND=noninteractive
+# Support both new and legacy env var names for backward compatibility
+ENV TRUENAS_CSI_IS_CONTAINER=true
 ENV DEMOCRATIC_CSI_IS_CONTAINER=true
 
 ARG TARGETPLATFORM
@@ -133,4 +137,4 @@ COPY --from=build --chown=csi:csi /home/csi/app /home/csi/app
 WORKDIR /home/csi/app
 
 EXPOSE 50051
-ENTRYPOINT [ "bin/democratic-csi" ]
+ENTRYPOINT [ "bin/truenas-csi" ]

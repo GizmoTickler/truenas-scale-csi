@@ -544,7 +544,12 @@ class ISCSI {
         }
 
         // make sure session is a valid number
-        if (session !== 0 && session > 0) {
+        if (
+          (typeof sid === "number" && sid <= 0) ||
+          (typeof sid === "string" && sid.trim().length === 0) ||
+          sid === null ||
+          typeof sid === "undefined"
+        ) {
           throw new Error("cannot scan empty session id");
         }
 

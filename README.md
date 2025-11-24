@@ -330,6 +330,12 @@ See the `examples/` directory for complete configuration examples:
 - [TrueNAS API Client Reference](https://github.com/truenas/api_client)
 - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
 
+## Credits
+
+This project is a fork of [democratic-csi](https://github.com/democratic-csi/democratic-csi) by [Travis Glenn Hansen](https://github.com/travisghansen). The original project provides CSI drivers for multiple storage backends including TrueNAS, Synology, and generic ZFS systems.
+
+This fork focuses exclusively on TrueNAS SCALE 25.04+ with the WebSocket JSON-RPC 2.0 API, removing legacy drivers and SSH-based operations for a streamlined codebase.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

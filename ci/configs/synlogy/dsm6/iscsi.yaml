@@ -6,7 +6,7 @@ httpConnection:
   username: ${SYNOLOGY_USERNAME}
   password: ${SYNOLOGY_PASSWORD}
   allowInsecure: true
-  session: "democratic-csi-${CI_BUILD_KEY}"
+  session: "truenas-csi-${CI_BUILD_KEY}"
   serialize: true
 
 synology:

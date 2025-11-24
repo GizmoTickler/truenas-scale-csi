@@ -1,5 +1,4 @@
 # TrueNAS Scale CSI Driver - CI/CD Pipeline
-# Based on democratic-csi (https://github.com/democratic-csi/democratic-csi)
 
 name: CI
 

@@ -127,7 +127,7 @@ class ObjectiveFS {
      * delete safety checks for filesystem
      *
      * while it is possible to delete a fs without a pool we
-     * should never be doing that in democratic-csi
+     * should never be doing that in truenas-csi
      */
     let fs_parts = filesystem.split("/");
     if (fs_parts.length != 2) {

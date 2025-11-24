@@ -15,8 +15,7 @@ const winston = require("winston");
 const bunyan = require("bunyan");
 
 const env = process.env.NODE_ENV || "development";
-// Support both new and legacy env var names for backward compatibility
-let level = process.env.TRUENAS_CSI_LOG_LEVEL || process.env.DEMOCRATIC_CSI_LOG_LEVEL || null;
+let level = process.env.TRUENAS_CSI_LOG_LEVEL || null;
 
 if (!level) {
   if (env == "production") {

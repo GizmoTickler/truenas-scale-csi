@@ -3,7 +3,7 @@
 const { grpc } = require("../src/utils/grpc");
 
 const args = require("yargs")
-  .env("DEMOCRATIC_CSI_LIVENESS_PROBE")
+  .env("TRUENAS_CSI_LIVENESS_PROBE")
   .scriptName("liveness-probe")
   .usage("$0 [options]")
   .option("csi-version", {

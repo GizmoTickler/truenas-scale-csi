@@ -1,19 +1,12 @@
 {
   "name": "truenas-scale-csi",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Kubernetes CSI driver for TrueNAS SCALE",
   "main": "bin/truenas-csi",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "./bin/truenas-csi"
   },
-  "contributors": [
-    {
-      "name": "Travis Glenn Hansen",
-      "email": "travisghansen@yahoo.com",
-      "url": "https://github.com/travisghansen"
-    }
-  ],
   "bugs": {
     "url": "https://github.com/GizmoTickler/truenas-scale-csi/issues"
   },

@@ -1,29 +1,36 @@
+# v2.1.0
+
+Release 2025-11-24
+
+- Updated container image references to use versioned tags instead of `latest`
+- Documentation improvements
+
 # v2.0.0
 
-Release 2024-11-24
+Release 2025-11-24
 
-**Project Rename: democratic-csi → truenas-scale-csi**
+**BREAKING CHANGE: Project renamed to truenas-scale-csi**
 
-This release marks the fork and rename from [democratic-csi](https://github.com/democratic-csi/democratic-csi)
-to truenas-scale-csi. We are grateful to Travis Glenn Hansen and the democratic-csi contributors
-for the excellent foundation this project provides.
+This is a major release with breaking changes. The project has been renamed
+and refocused exclusively on TrueNAS SCALE 25.04+ with the WebSocket JSON-RPC 2.0 API.
 
 **Key Changes:**
 
-- Renamed project from `democratic-csi` to `truenas-scale-csi`
+- Renamed project to `truenas-scale-csi`
 - Focus exclusively on TrueNAS SCALE 25.04+ with WebSocket JSON-RPC 2.0 API
 - Container images now published to `ghcr.io/gizmotickler/truenas-scale-csi`
-- Binary renamed from `bin/democratic-csi` to `bin/truenas-csi`
-- Added support for `TRUENAS_CSI_*` environment variables (legacy `DEMOCRATIC_CSI_*` still supported)
+- Binary renamed to `bin/truenas-csi`
+- Environment variables now use `TRUENAS_CSI_*` prefix
+- ZFS property names now use `truenas-csi:*` prefix
+- Parameter namespaces now use `truenas-csi.org/*`
 - Updated GitHub workflows for GHCR publishing
-- ZFS property names kept as `democratic-csi:*` for backward compatibility with existing volumes
 - Removed legacy SSH-based drivers and other storage backends
 
-**Backward Compatibility:**
+**Breaking Changes:**
 
-- Existing volumes with `democratic-csi:*` ZFS properties will continue to work
-- Legacy `DEMOCRATIC_CSI_*` environment variables are still supported
-- Legacy `democratic-csi.org/*` parameter namespaces are still supported
+- Existing volumes with old ZFS properties will NOT work - new deployments only
+- Old `DEMOCRATIC_CSI_*` environment variables are NOT supported
+- Old parameter namespaces are NOT supported
 
 # v1.9.4
 
@@ -222,9 +229,7 @@ should be installed with chart version `>=0.11.0`. Make note that due to the
 updated base image from `buster` to `bullseye` that the filesystem tools have
 all been updated as well (`mkfs.foo`, `resize2fs`, `fsck.foo`, etc).
 
-To facilitate the removal `grpc-uds` package a new sister project was created:
-
-https://github.com/democratic-csi/csi-grpc-proxy
+To facilitate the removal `grpc-uds` package a proxy project was used.
 
 Not all environments require the usage of the proxy, but it is enabled by
 default with `helm` chart versions `>=0.11.0`.

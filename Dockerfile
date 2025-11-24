@@ -49,9 +49,7 @@ LABEL org.opencontainers.image.title "TrueNAS Scale CSI Driver"
 LABEL org.opencontainers.image.description "Kubernetes CSI driver for TrueNAS SCALE"
 
 ENV DEBIAN_FRONTEND=noninteractive
-# Support both new and legacy env var names for backward compatibility
 ENV TRUENAS_CSI_IS_CONTAINER=true
-ENV DEMOCRATIC_CSI_IS_CONTAINER=true
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

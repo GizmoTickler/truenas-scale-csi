@@ -223,6 +223,107 @@ class Api {
   }
 
   /**
+   * Get dataset with children (replaces REST API /pool/dataset/id/{id} endpoint)
+   * @param {string} datasetName - Full dataset name
+   * @param {object} extraOptions - Additional options for query
+   */
+  async DatasetGetWithChildren(datasetName, extraOptions = {}) {
+    const filters = [["id", "=", datasetName]];
+    const options = {
+      extra: {
+        retrieve_children: true,
+        flat: false,
+        properties: extraOptions.properties || [],
+        ...extraOptions,
+      },
+    };
+
+    const results = await this.query("pool.dataset.query", filters, options);
+
+    if (!results || results.length === 0) {
+      return null;
+    }
+
+    return results[0];
+  }
+
+  /**
+   * Get dataset with snapshots
+   * @param {string} datasetName - Full dataset name
+   * @param {array} snapshotProperties - Properties to fetch for snapshots
+   */
+  async DatasetGetWithSnapshots(datasetName, snapshotProperties = []) {
+    const filters = [["id", "=", datasetName]];
+    const options = {
+      extra: {
+        snapshots: true,
+        snapshots_properties: snapshotProperties,
+      },
+    };
+
+    const results = await this.query("pool.dataset.query", filters, options);
+
+    if (!results || results.length === 0) {
+      return null;
+    }
+
+    return results[0];
+  }
+
+  /**
+   * List all child datasets of a parent dataset
+   * @param {string} parentDatasetName - Parent dataset name
+   * @param {array} properties - Properties to retrieve for each child
+   */
+  async DatasetListChildren(parentDatasetName, properties = []) {
+    const filters = [["id", "^", parentDatasetName + "/"]];
+    const options = {
+      extra: {
+        flat: true,
+        properties: properties,
+      },
+    };
+
+    return await this.query("pool.dataset.query", filters, options);
+  }
+
+  /**
+   * List snapshots with optional filters
+   * @param {array} filters - Query filters
+   * @param {array} properties - Properties to retrieve
+   */
+  async SnapshotList(filters = [], properties = []) {
+    const options = {};
+    if (properties && properties.length > 0) {
+      options.extra = {
+        properties: properties,
+      };
+    }
+
+    return await this.query("zfs.snapshot.query", filters, options);
+  }
+
+  /**
+   * List snapshots for a dataset
+   * @param {string} datasetName - Dataset name (without @snapshot part)
+   * @param {array} properties - Properties to retrieve
+   */
+  async SnapshotListForDataset(datasetName, properties = []) {
+    const filters = [["dataset", "=", datasetName]];
+    return await this.SnapshotList(filters, properties);
+  }
+
+  /**
+   * List snapshots for a dataset and all children (recursive)
+   * @param {string} parentDatasetName - Parent dataset name
+   * @param {array} properties - Properties to retrieve
+   */
+  async SnapshotListRecursive(parentDatasetName, properties = []) {
+    const filters = [["dataset", "^", parentDatasetName]];
+    return await this.SnapshotList(filters, properties);
+  }
+
+  /**
    * Destroy snapshots matching criteria
    * @param {string} datasetName - Dataset name
    * @param {object} data - Snapshot destruction criteria
@@ -461,6 +562,72 @@ class Api {
       key,
       value: String(value),
     }));
+  }
+
+  /**
+   * Normalize properties from a dataset/snapshot object
+   * Extracts only specified properties and normalizes them to expected format
+   * @param {object} item - Dataset or snapshot object from API
+   * @param {array} properties - List of property names to extract
+   * @returns {object} - Normalized properties object
+   */
+  normalizeProperties(item, properties = []) {
+    const result = {};
+
+    for (const prop of properties) {
+      // Check if property is a user property (contains ':')
+      const isUserProp = prop.includes(":");
+
+      if (isUserProp) {
+        // User properties are in user_properties object
+        if (item.user_properties && item.user_properties[prop]) {
+          result[prop] = {
+            value: item.user_properties[prop].value,
+            rawvalue: item.user_properties[prop].rawvalue || item.user_properties[prop].value,
+            source: item.user_properties[prop].source || "local",
+          };
+        } else {
+          result[prop] = {
+            value: "-",
+            rawvalue: "-",
+            source: "none",
+          };
+        }
+      } else {
+        // System properties - check various locations
+        if (item[prop] !== undefined) {
+          // Property might be a direct value or an object with value/rawvalue
+          if (typeof item[prop] === "object" && item[prop] !== null) {
+            result[prop] = {
+              value: item[prop].value !== undefined ? item[prop].value : item[prop].parsed,
+              rawvalue: item[prop].rawvalue !== undefined ? item[prop].rawvalue : item[prop].value,
+              source: item[prop].source || "local",
+            };
+          } else {
+            result[prop] = {
+              value: item[prop],
+              rawvalue: item[prop],
+              source: "local",
+            };
+          }
+        } else if (item.properties && item.properties[prop]) {
+          // Check in nested properties object (for snapshots)
+          result[prop] = {
+            value: item.properties[prop].value,
+            rawvalue: item.properties[prop].rawvalue || item.properties[prop].value,
+            source: item.properties[prop].source || "local",
+          };
+        } else {
+          result[prop] = {
+            value: "-",
+            rawvalue: "-",
+            source: "none",
+          };
+        }
+      }
+    }
+
+    return result;
   }
 
   // ============================================================================

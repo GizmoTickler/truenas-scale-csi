@@ -509,8 +509,24 @@ class TrueNASApiDriver extends CsiBaseDriver {
 
   /**
    * Create NVMe-oF share (subsystem and namespace)
+   * NOTE: NVMe-oF support requires TrueNAS SCALE 25.10 or later
    */
   async createNVMeOFShare(call, datasetName, httpApiClient, zb) {
+    // Check TrueNAS version - NVMe-oF requires 25.10+
+    const version = await httpApiClient.getSystemVersion();
+    if (version) {
+      // Extract version number (e.g., "TrueNAS-SCALE-25.04.0" -> "25.04.0")
+      const versionMatch = version.match(/(\d+\.\d+)/);
+      if (versionMatch) {
+        const versionNum = parseFloat(versionMatch[1]);
+        if (versionNum < 25.10) {
+          throw new GrpcError(
+            grpc.status.FAILED_PRECONDITION,
+            `NVMe-oF requires TrueNAS SCALE 25.10 or later. Current version: ${version}`
+          );
+        }
+      }
+    }
     // Get dataset properties
     const properties = await httpApiClient.DatasetGet(datasetName, [
       "name",
@@ -975,7 +991,7 @@ class TrueNASApiDriver extends CsiBaseDriver {
     return this.ctx.registry.get(`${__REGISTRY_NS__}:http_client`, () => {
       const client = new HttpClient(this.options.httpConnection);
       client.logger = this.ctx.logger;
-      client.setApiVersion(2); // requires version 2
+      // WebSocket client uses JSON-RPC 2.0 protocol
       return client;
     });
   }
@@ -1486,7 +1502,7 @@ class TrueNASApiDriver extends CsiBaseDriver {
                 !job ||
                 !["SUCCESS", "ABORTED", "FAILED"].includes(job.state)
               ) {
-                job = await httpApiClient.CoreGetJobs({ id: job_id });
+                job = await httpApiClient.CoreGetJobs([["id", "=", job_id]]);
                 job = job[0];
                 await GeneralUtils.sleep(3000);
               }
@@ -1646,7 +1662,7 @@ class TrueNASApiDriver extends CsiBaseDriver {
                 !job ||
                 !["SUCCESS", "ABORTED", "FAILED"].includes(job.state)
               ) {
-                job = await httpApiClient.CoreGetJobs({ id: job_id });
+                job = await httpApiClient.CoreGetJobs([["id", "=", job_id]]);
                 job = job[0];
                 await GeneralUtils.sleep(3000);
               }
@@ -2380,35 +2396,38 @@ class TrueNASApiDriver extends CsiBaseDriver {
     const datasetName = datasetParentName;
     const rows = [];
 
-    endpoint = `/pool/dataset/id/${encodeURIComponent(datasetName)}`;
-    response = await httpClient.get(endpoint);
+    // Use WebSocket API instead of deprecated REST API
+    const propertiesToFetch = [
+      "name",
+      "mountpoint",
+      "refquota",
+      "available",
+      "used",
+      VOLUME_CSI_NAME_PROPERTY_NAME,
+      VOLUME_CONTENT_SOURCE_TYPE_PROPERTY_NAME,
+      VOLUME_CONTENT_SOURCE_ID_PROPERTY_NAME,
+      "volsize",
+      MANAGED_PROPERTY_NAME,
+      SHARE_VOLUME_CONTEXT_PROPERTY_NAME,
+      SUCCESS_PROPERTY_NAME,
+      VOLUME_CONTEXT_PROVISIONER_INSTANCE_ID_PROPERTY_NAME,
+      VOLUME_CONTEXT_PROVISIONER_DRIVER_PROPERTY_NAME,
+    ];
 
-    //console.log(response);
+    const parentDataset = await httpApiClient.DatasetGetWithChildren(datasetName, {
+      properties: propertiesToFetch,
+    });
 
-    if (response.statusCode == 404) {
+    if (!parentDataset) {
       return {
         entries: [],
         next_token: null,
       };
     }
-    if (response.statusCode == 200) {
-      for (let child of response.body.children) {
-        let child_properties = httpApiClient.normalizeProperties(child, [
-          "name",
-          "mountpoint",
-          "refquota",
-          "available",
-          "used",
-          VOLUME_CSI_NAME_PROPERTY_NAME,
-          VOLUME_CONTENT_SOURCE_TYPE_PROPERTY_NAME,
-          VOLUME_CONTENT_SOURCE_ID_PROPERTY_NAME,
-          "volsize",
-          MANAGED_PROPERTY_NAME,
-          SHARE_VOLUME_CONTEXT_PROPERTY_NAME,
-          SUCCESS_PROPERTY_NAME,
-          VOLUME_CONTEXT_PROVISIONER_INSTANCE_ID_PROPERTY_NAME,
-          VOLUME_CONTEXT_PROVISIONER_DRIVER_PROPERTY_NAME,
-        ]);
+
+    if (parentDataset.children) {
+      for (let child of parentDataset.children) {
+        let child_properties = httpApiClient.normalizeProperties(child, propertiesToFetch);
 
         let row = {};
         for (let p in child_properties) {
@@ -2622,51 +2641,37 @@ class TrueNASApiDriver extends CsiBaseDriver {
               rows.push(row);
               break;
             case 2:
-              // get snapshots connected to the to source_volume_id
-              endpoint = `/pool/dataset/id/${encodeURIComponent(
-                operativeFilesystem
-              )}`;
-              response = await httpClient.get(endpoint, {
-                "extra.snapshots": 1,
-                "extra.snapshots_properties": JSON.stringify(zfsProperties),
-              });
-              if (response.statusCode == 404) {
-                throw new Error("dataset does not exist");
-              } else if (response.statusCode == 200) {
-                for (let snapshot of response.body.snapshots) {
+              // get snapshots connected to the source_volume_id using WebSocket API
+              {
+                const snapshots = await httpApiClient.SnapshotListForDataset(
+                  operativeFilesystem,
+                  zfsProperties
+                );
+                for (let snapshot of snapshots) {
+                  let snap_props = httpApiClient.normalizeProperties(snapshot, zfsProperties);
                   let row = {};
-                  for (let p in snapshot.properties) {
-                    row[p] = snapshot.properties[p].rawvalue;
+                  for (let p in snap_props) {
+                    row[p] = snap_props[p].rawvalue;
                   }
                   rows.push(row);
                 }
-              } else {
-                throw new Error(`unhandled statusCode: ${response.statusCode}`);
               }
               break;
             case 1:
-              // get all snapshot recursively from the parent dataset
-              endpoint = `/pool/dataset/id/${encodeURIComponent(
-                operativeFilesystem
-              )}`;
-              response = await httpClient.get(endpoint, {
-                "extra.snapshots": 1,
-                "extra.snapshots_properties": JSON.stringify(zfsProperties),
-              });
-              if (response.statusCode == 404) {
-                throw new Error("dataset does not exist");
-              } else if (response.statusCode == 200) {
-                for (let child of response.body.children) {
-                  for (let snapshot of child.snapshots) {
-                    let row = {};
-                    for (let p in snapshot.properties) {
-                      row[p] = snapshot.properties[p].rawvalue;
-                    }
-                    rows.push(row);
+              // get all snapshots recursively from the parent dataset using WebSocket API
+              {
+                const snapshots = await httpApiClient.SnapshotListRecursive(
+                  operativeFilesystem,
+                  zfsProperties
+                );
+                for (let snapshot of snapshots) {
+                  let snap_props = httpApiClient.normalizeProperties(snapshot, zfsProperties);
+                  let row = {};
+                  for (let p in snap_props) {
+                    row[p] = snap_props[p].rawvalue;
                   }
+                  rows.push(row);
                 }
-              } else {
-                throw new Error(`unhandled statusCode: ${response.statusCode}`);
               }
               break;
             default:
@@ -2692,42 +2697,19 @@ class TrueNASApiDriver extends CsiBaseDriver {
               rows.push(row);
               break;
             case 2:
-              // get snapshots connected to the to source_volume_id
-              endpoint = `/pool/dataset/id/${encodeURIComponent(
-                operativeFilesystem
-              )}`;
-              response = await httpClient.get(endpoint);
-              if (response.statusCode == 404) {
-                throw new Error("dataset does not exist");
-              } else if (response.statusCode == 200) {
-                for (let child of response.body.children) {
-                  let i_response = httpApiClient.normalizeProperties(
-                    child,
-                    zfsProperties
-                  );
-                  let row = {};
-                  for (let p in i_response) {
-                    row[p] = i_response[p].rawvalue;
-                  }
-                  rows.push(row);
+              // get child datasets using WebSocket API
+              {
+                const parentDataset = await httpApiClient.DatasetGetWithChildren(
+                  operativeFilesystem,
+                  { properties: zfsProperties }
+                );
+                if (!parentDataset) {
+                  throw new Error("dataset does not exist");
                 }
-              } else {
-                throw new Error(`unhandled statusCode: ${response.statusCode}`);
-              }
-              break;
-            case 1:
-              // get all snapshot recursively from the parent dataset
-              endpoint = `/pool/dataset/id/${encodeURIComponent(
-                operativeFilesystem
-              )}`;
-              response = await httpClient.get(endpoint);
-              if (response.statusCode == 404) {
-                throw new Error("dataset does not exist");
-              } else if (response.statusCode == 200) {
-                for (let child of response.body.children) {
-                  for (let grandchild of child.children) {
+                if (parentDataset.children) {
+                  for (let child of parentDataset.children) {
                     let i_response = httpApiClient.normalizeProperties(
-                      grandchild,
+                      child,
                       zfsProperties
                     );
                     let row = {};
@@ -2737,8 +2719,35 @@ class TrueNASApiDriver extends CsiBaseDriver {
                     rows.push(row);
                   }
                 }
-              } else {
-                throw new Error(`unhandled statusCode: ${response.statusCode}`);
+              }
+              break;
+            case 1:
+              // get all datasets recursively using WebSocket API
+              {
+                const parentDataset = await httpApiClient.DatasetGetWithChildren(
+                  operativeFilesystem,
+                  { properties: zfsProperties }
+                );
+                if (!parentDataset) {
+                  throw new Error("dataset does not exist");
+                }
+                if (parentDataset.children) {
+                  for (let child of parentDataset.children) {
+                    if (child.children) {
+                      for (let grandchild of child.children) {
+                        let i_response = httpApiClient.normalizeProperties(
+                          grandchild,
+                          zfsProperties
+                        );
+                        let row = {};
+                        for (let p in i_response) {
+                          row[p] = i_response[p].rawvalue;
+                        }
+                        rows.push(row);
+                      }
+                    }
+                  }
+                }
               }
               break;
             default:
@@ -2968,77 +2977,51 @@ class TrueNASApiDriver extends CsiBaseDriver {
 
     driver.ctx.logger.verbose("cleansed snapshot name: %s", name);
 
-    // check for other snapshopts with the same name on other volumes and fail as appropriate
+    // check for other snapshots with the same name on other volumes and fail as appropriate
     {
-      let endpoint;
-      let response;
+      // Check detached snapshots (datasets) using WebSocket API
+      const detachedParent = this.getDetachedSnapshotParentDatasetName();
+      const detachedDataset = await httpApiClient.DatasetGetWithChildren(detachedParent, {});
 
-      let datasets = [];
-      endpoint = `/pool/dataset/id/${encodeURIComponent(
-        this.getDetachedSnapshotParentDatasetName()
-      )}`;
-      response = await httpClient.get(endpoint);
-
-      switch (response.statusCode) {
-        case 200:
-          for (let child of response.body.children) {
+      if (detachedDataset && detachedDataset.children) {
+        let datasets = [];
+        for (let child of detachedDataset.children) {
+          if (child.children) {
             datasets = datasets.concat(child.children);
           }
-          //console.log(datasets);
-          for (let dataset of datasets) {
-            let parts = dataset.name.split("/").slice(-2);
-            if (parts[1] != name) {
-              continue;
-            }
+        }
 
-            if (parts[0] != source_volume_id) {
-              throw new GrpcError(
-                grpc.status.ALREADY_EXISTS,
-                `snapshot name: ${name} is incompatible with source_volume_id: ${source_volume_id} due to being used with another source_volume_id`
-              );
-            }
+        for (let dataset of datasets) {
+          let parts = dataset.name.split("/").slice(-2);
+          if (parts[1] != name) {
+            continue;
           }
-          break;
-        case 404:
-          break;
-        default:
-          throw new Error(JSON.stringify(response.body));
+
+          if (parts[0] != source_volume_id) {
+            throw new GrpcError(
+              grpc.status.ALREADY_EXISTS,
+              `snapshot name: ${name} is incompatible with source_volume_id: ${source_volume_id} due to being used with another source_volume_id`
+            );
+          }
+        }
       }
 
-      // get all snapshot recursively from the parent dataset
-      let snapshots = [];
-      endpoint = `/pool/dataset/id/${encodeURIComponent(
-        this.getVolumeParentDatasetName()
-      )}`;
-      response = await httpClient.get(endpoint, {
-        "extra.snapshots": 1,
-        //"extra.snapshots_properties": JSON.stringify(zfsProperties),
-      });
+      // Check attached snapshots using WebSocket API
+      const volumeParent = this.getVolumeParentDatasetName();
+      const snapshots = await httpApiClient.SnapshotListRecursive(volumeParent, []);
 
-      switch (response.statusCode) {
-        case 200:
-          for (let child of response.body.children) {
-            snapshots = snapshots.concat(child.snapshots);
-          }
-          //console.log(snapshots);
-          for (let snapshot of snapshots) {
-            let parts = zb.helpers.extractLeafName(snapshot.name).split("@");
-            if (parts[1] != name) {
-              continue;
-            }
+      for (let snapshot of snapshots) {
+        let parts = zb.helpers.extractLeafName(snapshot.name).split("@");
+        if (parts[1] != name) {
+          continue;
+        }
 
-            if (parts[0] != source_volume_id) {
-              throw new GrpcError(
-                grpc.status.ALREADY_EXISTS,
-                `snapshot name: ${name} is incompatible with source_volume_id: ${source_volume_id} due to being used with another source_volume_id`
-              );
-            }
-          }
-          break;
-        case 404:
-          break;
-        default:
-          throw new Error(JSON.stringify(response.body));
+        if (parts[0] != source_volume_id) {
+          throw new GrpcError(
+            grpc.status.ALREADY_EXISTS,
+            `snapshot name: ${name} is incompatible with source_volume_id: ${source_volume_id} due to being used with another source_volume_id`
+          );
+        }
       }
     }
 
@@ -3102,7 +3085,7 @@ class TrueNASApiDriver extends CsiBaseDriver {
 
         // wait for job to finish
         while (!job || !["SUCCESS", "ABORTED", "FAILED"].includes(job.state)) {
-          job = await httpApiClient.CoreGetJobs({ id: job_id });
+          job = await httpApiClient.CoreGetJobs([["id", "=", job_id]]);
           job = job[0];
           await GeneralUtils.sleep(3000);
         }

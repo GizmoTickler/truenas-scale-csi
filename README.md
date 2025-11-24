@@ -7,8 +7,8 @@
 `democratic-csi` implements the `csi` (container storage interface) spec
 providing storage for various container orchestration systems (ie: Kubernetes).
 
-This version focuses exclusively on providing storage via iSCSI/NFS/NVMe-oF from
-**TrueNAS SCALE 25.04+** using the modern WebSocket JSON-RPC 2.0 API.
+This version focuses exclusively on providing storage via iSCSI/NFS from
+**TrueNAS SCALE 25.04+** and NVMe-oF from **TrueNAS SCALE 25.10+** using the modern WebSocket JSON-RPC 2.0 API.
 
 The drivers implement the depth and breadth of the `csi` spec, so you
 have access to resizing, snapshots, clones, etc functionality.
@@ -25,7 +25,7 @@ have access to resizing, snapshots, clones, etc functionality.
 
 - **WebSocket JSON-RPC 2.0 API**: No SSH required - all operations via WebSocket
 - **Modern TrueNAS SCALE 25.04+**: Uses the latest versioned API (`/api/current`)
-- **Three Storage Protocols**: NFS, iSCSI, and NVMe-oF support
+- **Three Storage Protocols**: NFS and iSCSI (25.04+), NVMe-oF (25.10+)
 - **Full CSI Spec**: Volume resizing, snapshots, clones, and more
 - **Persistent Connection**: Auto-reconnecting WebSocket with authentication
 - **API Key Auth**: Secure authentication via TrueNAS API keys

@@ -56,8 +56,6 @@ class CsiBaseDriver {
    * in order of preference:
    *  - truenas-csi.org/{instance_id}/{key}
    *  - truenas-csi.org/{driver}/{key}
-   *  - democratic-csi.org/{instance_id}/{key} (backward compatibility)
-   *  - democratic-csi.org/{driver}/{key} (backward compatibility)
    *  - {key}
    *
    * @param {*} parameters
@@ -74,9 +72,7 @@ class CsiBaseDriver {
 
   getNormalizedParameters(parameters, driver, instance_id) {
     const normalized = JSON.parse(JSON.stringify(parameters));
-    // Support both new and legacy namespaces for backward compatibility
-    const base_keys = ["truenas-csi.org", "democratic-csi.org"];
-    const base_key = "democratic-csi.org"; // Primary for backward compatibility
+    const base_key = "truenas-csi.org";
     driver = driver || this.options.driver;
     instance_id = instance_id || this.options.instance_id;
 
@@ -755,8 +751,8 @@ class CsiBaseDriver {
           mount_flags.push("defaults");
 
           // https://github.com/karelzak/util-linux/issues/1429
-          //mount_flags.push("x-democratic-csi.managed");
-          //mount_flags.push("x-democratic-csi.staged");
+          //mount_flags.push("x-truenas-csi.managed");
+          //mount_flags.push("x-truenas-csi.staged");
           break;
       }
 
@@ -1522,7 +1518,6 @@ class CsiBaseDriver {
                   staging_target_path
                 );
                 if (!result) {
-                  // https://github.com/democratic-csi/democratic-csi/issues/52#issuecomment-768463401
                   let checkFilesystem =
                     driver.options.node.mount.checkFilesystem[fs_type] || {};
                   if (checkFilesystem.enabled) {
@@ -1595,7 +1590,6 @@ class CsiBaseDriver {
 
               switch (fs_type) {
                 case "xfs":
-                  // https://github.com/democratic-csi/democratic-csi/issues/191
                   // to avoid issues with cloned volumes
                   mount_flags.push(`nouuid`);
                   break;
@@ -3017,11 +3011,11 @@ class CsiBaseDriver {
     bind_mount_flags.push("defaults");
 
     // https://github.com/karelzak/util-linux/issues/1429
-    //bind_mount_flags.push("x-democratic-csi.managed");
-    //bind_mount_flags.push("x-democratic-csi.published");
+    //bind_mount_flags.push("x-truenas-csi.managed");
+    //bind_mount_flags.push("x-truenas-csi.published");
 
     if (readonly) bind_mount_flags.push("ro");
-    // , "x-democratic-csi.ro"
+    // , "x-truenas-csi.ro"
 
     switch (driver.__getNodeOsDriver()) {
       case NODE_OS_DRIVER_POSIX:

@@ -1,10 +1,8 @@
 # Nomad Support
 
-> **Note**: This documentation is based on the original [democratic-csi](https://github.com/democratic-csi/democratic-csi) Nomad integration.
-
 While `truenas-scale-csi` fully implements the CSI spec, Nomad currently supports the CSI in a limited capability. Nomad can utilize CSI volumes, but it can not automatically create, destroy, or manage them in any capacity. Volumes have to be created externally and then registered with Nomad. Once Nomad supports the full spec, all `truenas-scale-csi` features should work out of the box. However, these instructions can be used as a temporary solution.
 
-These instructions should work with any share type, but they have only been tested with NFS shares. The detailed discussion can be found at [this issue](https://github.com/democratic-csi/democratic-csi/issues/40).
+These instructions should work with any share type, but they have only been tested with NFS shares.
 
 ## Nomad Jobs
 
@@ -143,8 +141,8 @@ Output
 
 While the volume can be registered using the [Nomad cli](https://www.nomadproject.io/docs/commands/volume/register), it is easier to use Terraform and the [Nomad provider](https://registry.terraform.io/providers/hashicorp/nomad/latest/docs), mapping the output to the following template.
 
-- Access mode can be changed. See [point 2](https://github.com/democratic-csi/democratic-csi/issues/40#issuecomment-751613596).
-- Mount flags can be specified. See the [provider docs](https://registry.terraform.io/providers/hashicorp/nomad/latest/docs/resources/volume#mount_flags) and [point 3](https://github.com/democratic-csi/democratic-csi/issues/40#issuecomment-751613596)
+- Access mode can be changed
+- Mount flags can be specified. See the [provider docs](https://registry.terraform.io/providers/hashicorp/nomad/latest/docs/resources/volume#mount_flags)
 
 ```hcl
 provider "nomad" {

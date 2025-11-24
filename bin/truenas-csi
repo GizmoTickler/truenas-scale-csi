@@ -2,10 +2,8 @@
 
 /**
  * TrueNAS Scale CSI Driver
- * Based on democratic-csi (https://github.com/democratic-csi/democratic-csi)
  *
- * keep the shebang line length under 128
- * https://github.com/democratic-csi/democratic-csi/issues/171
+ * Keep the shebang line length under 128 characters
  */
 
 // polyfills
@@ -18,9 +16,7 @@ const { stringify, stripWindowsDriveLetter } = require("../src/utils/general");
 let driverConfigFile;
 let options;
 const args = require("yargs")
-  // Support both TRUENAS_CSI_ and legacy DEMOCRATIC_CSI_ env prefixes
   .env("TRUENAS_CSI")
-  .env("DEMOCRATIC_CSI")
   .scriptName("truenas-csi")
   .usage("$0 [options]")
   .option("driver-config-file", {

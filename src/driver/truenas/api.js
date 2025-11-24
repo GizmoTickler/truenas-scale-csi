@@ -10,48 +10,39 @@ const Handlebars = require("handlebars");
 const uuidv4 = require("uuid").v4;
 const semver = require("semver");
 
-/**
- * TrueNAS SCALE ZFS property names
- *
- * BACKWARD COMPATIBILITY NOTE:
- * These property names use the "democratic-csi:" prefix inherited from the
- * original democratic-csi project (https://github.com/democratic-csi/democratic-csi).
- * They are intentionally kept unchanged for backward compatibility with existing
- * volumes that have these properties stored on their ZFS datasets/zvols.
- * Changing these would break existing deployments.
- */
-const TRUENAS_NFS_SHARE_PROPERTY_NAME = "democratic-csi:truenas_nfs_share_id";
+// TrueNAS SCALE ZFS property names
+const TRUENAS_NFS_SHARE_PROPERTY_NAME = "truenas-csi:truenas_nfs_share_id";
 const TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME =
-  "democratic-csi:truenas_iscsi_target_id";
+  "truenas-csi:truenas_iscsi_target_id";
 const TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME =
-  "democratic-csi:truenas_iscsi_extent_id";
+  "truenas-csi:truenas_iscsi_extent_id";
 const TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME =
-  "democratic-csi:truenas_iscsi_targetextent_id";
+  "truenas-csi:truenas_iscsi_targetextent_id";
 const TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME =
-  "democratic-csi:truenas_nvmeof_subsystem_id";
+  "truenas-csi:truenas_nvmeof_subsystem_id";
 const TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME =
-  "democratic-csi:truenas_nvmeof_namespace_id";
+  "truenas-csi:truenas_nvmeof_namespace_id";
 
-// zfs common properties
-const MANAGED_PROPERTY_NAME = "democratic-csi:managed_resource";
-const SUCCESS_PROPERTY_NAME = "democratic-csi:provision_success";
+// ZFS common properties
+const MANAGED_PROPERTY_NAME = "truenas-csi:managed_resource";
+const SUCCESS_PROPERTY_NAME = "truenas-csi:provision_success";
 const VOLUME_SOURCE_CLONE_SNAPSHOT_PREFIX = "volume-source-for-volume-";
 const VOLUME_SOURCE_DETACHED_SNAPSHOT_PREFIX = "volume-source-for-snapshot-";
-const VOLUME_CSI_NAME_PROPERTY_NAME = "democratic-csi:csi_volume_name";
+const VOLUME_CSI_NAME_PROPERTY_NAME = "truenas-csi:csi_volume_name";
 const SHARE_VOLUME_CONTEXT_PROPERTY_NAME =
-  "democratic-csi:csi_share_volume_context";
+  "truenas-csi:csi_share_volume_context";
 const VOLUME_CONTENT_SOURCE_TYPE_PROPERTY_NAME =
-  "democratic-csi:csi_volume_content_source_type";
+  "truenas-csi:csi_volume_content_source_type";
 const VOLUME_CONTENT_SOURCE_ID_PROPERTY_NAME =
-  "democratic-csi:csi_volume_content_source_id";
-const SNAPSHOT_CSI_NAME_PROPERTY_NAME = "democratic-csi:csi_snapshot_name";
+  "truenas-csi:csi_volume_content_source_id";
+const SNAPSHOT_CSI_NAME_PROPERTY_NAME = "truenas-csi:csi_snapshot_name";
 const SNAPSHOT_CSI_SOURCE_VOLUME_ID_PROPERTY_NAME =
-  "democratic-csi:csi_snapshot_source_volume_id";
+  "truenas-csi:csi_snapshot_source_volume_id";
 
 const VOLUME_CONTEXT_PROVISIONER_DRIVER_PROPERTY_NAME =
-  "democratic-csi:volume_context_provisioner_driver";
+  "truenas-csi:volume_context_provisioner_driver";
 const VOLUME_CONTEXT_PROVISIONER_INSTANCE_ID_PROPERTY_NAME =
-  "democratic-csi:volume_context_provisioner_instance_id";
+  "truenas-csi:volume_context_provisioner_instance_id";
 
 const __REGISTRY_NS__ = "TrueNASApiDriver";
 
@@ -254,7 +245,7 @@ class TrueNASApiDriver extends CsiBaseDriver {
           },
         });
       } else {
-        nfsShareComment = `democratic-csi (${this.ctx.args.csiName}): ${datasetName}`;
+        nfsShareComment = `truenas-csi (${this.ctx.args.csiName}): ${datasetName}`;
       }
 
       // Create NFS share
@@ -419,7 +410,7 @@ class TrueNASApiDriver extends CsiBaseDriver {
             },
           });
         } else {
-          extentComment = `democratic-csi: ${datasetName}`;
+          extentComment = `truenas-csi: ${datasetName}`;
         }
 
         const extentConfig = {

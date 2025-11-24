@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # TrueNAS Scale CSI Driver - Windows Container Release Script
-# Based on democratic-csi (https://github.com/democratic-csi/democratic-csi)
 
 set -e
 

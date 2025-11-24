@@ -6,15 +6,8 @@
 A Kubernetes CSI (Container Storage Interface) driver for TrueNAS SCALE, providing
 dynamic storage provisioning via NFS, iSCSI, and NVMe-oF protocols.
 
-## Credits
-
-This project is a fork of [democratic-csi](https://github.com/democratic-csi/democratic-csi),
-an excellent CSI driver framework created by [Travis Glenn Hansen](https://github.com/travisghansen).
-We are grateful for the foundation that democratic-csi provides.
-
-This fork focuses exclusively on TrueNAS SCALE 25.04+ with the modern WebSocket JSON-RPC 2.0 API,
-removing support for legacy SSH-based drivers and other storage backends to provide a streamlined,
-maintainable codebase specifically optimized for TrueNAS SCALE deployments.
+This driver focuses exclusively on TrueNAS SCALE 25.04+ with the modern WebSocket JSON-RPC 2.0 API,
+providing a streamlined codebase specifically optimized for TrueNAS SCALE deployments.
 
 ## Key Features
 
@@ -336,11 +329,7 @@ See the `examples/` directory for complete configuration examples:
 - [TrueNAS SCALE 25.04 API Documentation](https://api.truenas.com/v25.04.2/jsonrpc.html)
 - [TrueNAS API Client Reference](https://github.com/truenas/api_client)
 - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
-- [Original democratic-csi Project](https://github.com/democratic-csi/democratic-csi)
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-This project is based on [democratic-csi](https://github.com/democratic-csi/democratic-csi)
-by Travis Glenn Hansen, also licensed under the MIT License.

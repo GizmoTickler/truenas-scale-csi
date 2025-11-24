@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # TrueNAS Scale CSI Driver - Container Release Script
-# Based on democratic-csi (https://github.com/democratic-csi/democratic-csi)
 
 echo "$GHCR_PASSWORD" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 

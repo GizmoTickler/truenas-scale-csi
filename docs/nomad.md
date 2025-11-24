@@ -30,7 +30,7 @@ job "storage-controller" {
       driver = "docker"
 
       config {
-        image = "ghcr.io/gizmotickler/truenas-scale-csi:latest"
+        image = "ghcr.io/gizmotickler/truenas-scale-csi:v2.1.0"
         ports = ["grpc"]
 
         args = [
@@ -82,7 +82,7 @@ job "storage-node" {
       driver = "docker"
 
       config {
-        image = "ghcr.io/gizmotickler/truenas-scale-csi:latest"
+        image = "ghcr.io/gizmotickler/truenas-scale-csi:v2.1.0"
 
         args = [
           "--csi-version=1.2.0",

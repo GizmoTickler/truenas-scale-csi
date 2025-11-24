@@ -1,6 +1,13 @@
+# v2.1.0
+
+Release 2025-11-24
+
+- Updated container image references to use versioned tags instead of `latest`
+- Documentation improvements
+
 # v2.0.0
 
-Release 2024-11-24
+Release 2025-11-24
 
 **BREAKING CHANGE: Project renamed to truenas-scale-csi**
 

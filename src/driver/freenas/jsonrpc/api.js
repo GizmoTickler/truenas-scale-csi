@@ -156,41 +156,28 @@ class Api {
   }
 
   async DatasetInherit(datasetName, property) {
-      // pool.dataset.update with inherit?
-      // Or `pool.dataset.inherit` if it exists?
-      // Does `pool.dataset.delete` on a property work?
-      // Usually passing `null` or specialized method.
-      // `pool.dataset.delete` deletes the dataset.
-
-      // Looking for inherit method.
-      // `zfs.dataset.inherit`?
-      // No, usually it's `pool.dataset.update` with some magic or `pool.dataset.inherit` isn't listed.
-      // But `zfs.dataset.delete` for property?
-
-      // In `http/api.js`: system properties -> "INHERIT", user properties -> remove: true.
-
-      // For system properties, sending "INHERIT" as value might work if the API supports it.
-      // For user properties, removing them removes them from the dataset (effectively inheriting if unrelated, but user props don't really inherit same way).
+      // In SCALE 25.04+, to inherit a property:
+      // - For system properties: set value to "INHERIT" (special keyword)
+      // - For user properties: use pool.dataset.delete_user_prop or set to null
 
       if (this.getIsUserProperty(property)) {
-          // For user properties, we likely want to unset it.
-          // Is there a way to unset a property in update?
-          // Maybe set to null?
-          await this.client.call("pool.dataset.update", [datasetName, { [property]: { source: "INHERIT" } }]); // Guessing source: INHERIT or null
-          // Actually, let's try calling "pool.dataset.update" with the property set to null.
-          // Or maybe we don't support inheriting user properties cleanly via this call without checking docs.
-
-          // Alternative: `zfs.snapshot.update`...
-
-          // Let's try setting it to null or use a specific CLI-like approach if needed?
-          // No, we should use API.
-          // If I look at how `DatasetInherit` was implemented: `user_properties_update: [{ key: property, remove: true }]`
-
-          // I will try passing `{[property]: null}`.
-          await this.client.call("pool.dataset.update", [datasetName, { [property]: null }]);
+          // For user properties, we need to delete them to inherit
+          // The API supports pool.dataset.delete_user_prop in some versions
+          try {
+              // Try the dedicated method first if available
+              await this.client.call("pool.dataset.delete_user_prop", [datasetName, property]);
+          } catch (err) {
+              // Fallback: some versions might require setting to null or empty string
+              if (err.toString().includes("Method not found")) {
+                  // Try setting to null as fallback
+                  await this.client.call("pool.dataset.update", [datasetName, { [property]: null }]);
+              } else {
+                  throw err;
+              }
+          }
       } else {
-          // System property
-           await this.client.call("pool.dataset.update", [datasetName, { [property]: "INHERIT" }]);
+          // For system properties, set to "INHERIT" keyword
+          await this.client.call("pool.dataset.update", [datasetName, { [property]: "INHERIT" }]);
       }
   }
 
@@ -406,22 +393,178 @@ class Api {
   }
 
   async NvmetPortSubsysCreate(port_id, subsys_id) {
-      const data = { port: port_id, subsys: subsys_id };
+      // In SCALE 25.04+, we use nvmet.port.update to add subsystems to ports
       try {
-          return await this.client.call("nvmet.port.add_subsystems", [data]);
+          // First, get the current port configuration
+          const ports = await this.client.call("nvmet.port.query", [[["id", "=", port_id]]]);
+          if (!ports || ports.length === 0) {
+              throw new Error(`Port ${port_id} not found`);
+          }
+
+          const port = ports[0];
+          const subsystems = port.subsystems || [];
+
+          // Check if subsystem is already added
+          if (subsystems.includes(subsys_id)) {
+              return; // Already exists
+          }
+
+          // Add the subsystem to the port
+          subsystems.push(subsys_id);
+          await this.client.call("nvmet.port.update", [port_id, { subsystems }]);
       } catch(err) {
-          if (this.isAlreadyExistsError(err)) return; // Assuming success if exists
+          if (this.isAlreadyExistsError(err)) return;
           throw err;
       }
-      // Note: nvmet.port.add_subsystems or create port_subsys?
-      // 25.04 API check: `nvmet.port.add_subsystems` seems correct for linking.
-      // But verify if `nvmet.port_subsys` exists?
-      // `ssh.js` used `/nvmet/port_subsys`.
-      // I'll stick to `nvmet.port.add_subsystems` if available or `nvmet.port.update`?
-      // Actually, docs say `nvmet.port.update` allows setting subsystems.
-      // But there might be `nvmet.port.add_subsystems`?
+  }
 
-      // I will guess `nvmet.port.add_subsystems` or similar exists, OR I have to fetch port, add subsys, update port.
+  // iSCSI Operations
+  async IscsiGetGlobalConfig() {
+      return await this.client.call("iscsi.global.config");
+  }
+
+  async IscsiTargetCreate(data) {
+      try {
+          return await this.client.call("iscsi.target.create", [data]);
+      } catch(err) {
+          if (this.isAlreadyExistsError(err)) {
+              // Try to find existing target by name
+              const existing = await this.client.call("iscsi.target.query", [[["name", "=", data.name]]]);
+              if (existing && existing.length > 0) {
+                  return existing[0];
+              }
+          }
+          throw err;
+      }
+  }
+
+  async IscsiTargetQuery(filter = []) {
+      return await this.client.call("iscsi.target.query", [filter]);
+  }
+
+  async IscsiTargetUpdate(id, data) {
+      return await this.client.call("iscsi.target.update", [id, data]);
+  }
+
+  async IscsiTargetDelete(id) {
+      try {
+          await this.client.call("iscsi.target.delete", [id]);
+      } catch(err) {
+          if (this.isNotFoundError(err)) return;
+          throw err;
+      }
+  }
+
+  async IscsiExtentCreate(data) {
+      try {
+          return await this.client.call("iscsi.extent.create", [data]);
+      } catch(err) {
+          if (this.isAlreadyExistsError(err)) {
+              const existing = await this.client.call("iscsi.extent.query", [[["name", "=", data.name]]]);
+              if (existing && existing.length > 0) {
+                  return existing[0];
+              }
+          }
+          throw err;
+      }
+  }
+
+  async IscsiExtentQuery(filter = []) {
+      return await this.client.call("iscsi.extent.query", [filter]);
+  }
+
+  async IscsiExtentDelete(id) {
+      try {
+          await this.client.call("iscsi.extent.delete", [id]);
+      } catch(err) {
+          if (this.isNotFoundError(err)) return;
+          throw err;
+      }
+  }
+
+  async IscsiTargetExtentCreate(data) {
+      try {
+          return await this.client.call("iscsi.targetextent.create", [data]);
+      } catch(err) {
+          if (this.isAlreadyExistsError(err) ||
+              JSON.stringify(err).includes("already in this target") ||
+              JSON.stringify(err).includes("LUN ID is already being used")) {
+              const existing = await this.client.call("iscsi.targetextent.query", [[["target", "=", data.target], ["extent", "=", data.extent]]]);
+              if (existing && existing.length > 0) {
+                  return existing[0];
+              }
+          }
+          throw err;
+      }
+  }
+
+  async IscsiTargetExtentQuery(filter = []) {
+      return await this.client.call("iscsi.targetextent.query", [filter]);
+  }
+
+  // Sharing NFS Operations
+  async SharingNfsCreate(data) {
+      try {
+          return await this.client.call("sharing.nfs.create", [data]);
+      } catch(err) {
+          if (this.isAlreadyExistsError(err) || JSON.stringify(err).includes("exporting this path")) {
+              // Try to find by path
+              const paths = data.paths || data.path ? [data.path] : [];
+              if (paths.length > 0) {
+                  const existing = await this.client.call("sharing.nfs.query", [[["paths", "in", paths]]]);
+                  if (existing && existing.length > 0) {
+                      return existing[0];
+                  }
+              }
+          }
+          throw err;
+      }
+  }
+
+  async SharingNfsQuery(filter = []) {
+      return await this.client.call("sharing.nfs.query", [filter]);
+  }
+
+  async SharingNfsDelete(id) {
+      try {
+          await this.client.call("sharing.nfs.delete", [id]);
+      } catch(err) {
+          if (this.isNotFoundError(err)) return;
+          throw err;
+      }
+  }
+
+  // Sharing SMB Operations
+  async SharingSmbCreate(data) {
+      try {
+          return await this.client.call("sharing.smb.create", [data]);
+      } catch(err) {
+          if (this.isAlreadyExistsError(err)) {
+              const existing = await this.client.call("sharing.smb.query", [[["name", "=", data.name]]]);
+              if (existing && existing.length > 0) {
+                  return existing[0];
+              }
+          }
+          throw err;
+      }
+  }
+
+  async SharingSmbQuery(filter = []) {
+      return await this.client.call("sharing.smb.query", [filter]);
+  }
+
+  async SharingSmbDelete(id) {
+      try {
+          await this.client.call("sharing.smb.delete", [id]);
+      } catch(err) {
+          if (this.isNotFoundError(err)) return;
+          throw err;
+      }
+  }
+
+  // Service Operations
+  async ServiceReload(service) {
+      return await this.client.call("service.reload", [service]);
   }
 
   // Helpers

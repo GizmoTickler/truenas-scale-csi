@@ -148,6 +148,8 @@ class FreeNASSshDriver extends ControllerZfsBaseDriver {
             ...this.options.httpConnection,
             logger: this.ctx.logger
         });
+        // Register cleanup handler to close WebSocket connection
+        this.cleanup.push(() => client.close());
         return client;
       }
     );

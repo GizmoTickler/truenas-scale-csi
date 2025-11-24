@@ -11,6 +11,7 @@ class Client {
     this.isConnected = false;
     this.isAuthenticated = false;
     this.isReconnecting = false;
+    this.defaultTimeout = this.options.timeout || 60000; // 60 seconds default
 
     // Construct URL
     const protocol = this.options.protocol === "https" ? "wss" : "ws";
@@ -161,7 +162,7 @@ class Client {
       });
   }
 
-  async call(method, params = []) {
+  async call(method, params = [], timeout = null) {
     if (!this.isConnected || !this.isAuthenticated) {
       await this.connectPromise;
     }
@@ -176,10 +177,29 @@ class Client {
 
     this.logger.debug(`Sending JSON-RPC call: ${method}`, { id });
 
-    return new Promise((resolve, reject) => {
+    // Use provided timeout or default
+    const timeoutMs = timeout !== null ? timeout : this.defaultTimeout;
+
+    const requestPromise = new Promise((resolve, reject) => {
       this.requests.set(id, { resolve, reject });
       this.socket.send(JSON.stringify(payload));
     });
+
+    // Add timeout handling
+    if (timeoutMs > 0) {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          if (this.requests.has(id)) {
+            this.requests.delete(id);
+            reject(new Error(`Request timeout after ${timeoutMs}ms for method: ${method}`));
+          }
+        }, timeoutMs);
+      });
+
+      return Promise.race([requestPromise, timeoutPromise]);
+    }
+
+    return requestPromise;
   }
 
   close() {

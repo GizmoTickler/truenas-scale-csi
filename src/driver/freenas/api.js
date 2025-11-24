@@ -245,23 +245,8 @@ class FreeNASApiDriver extends CsiBaseDriver {
             };
 
             let shareId;
-            try {
-                const res = await client.call("sharing.nfs.create", [share]);
-                shareId = res.id;
-            } catch (err) {
-                // Check if already exists
-                if (err.toString().includes("already exists") || (err.error && err.error === 17) || (JSON.stringify(err).includes("exporting this path"))) {
-                    // Try to find it
-                    const existing = await client.call("sharing.nfs.query", [[["paths", "in", [properties.mountpoint.value]]]]);
-                    if (existing && existing.length > 0) {
-                        shareId = existing[0].id;
-                    } else {
-                         throw err;
-                    }
-                } else {
-                    throw err;
-                }
-            }
+            const res = await apiClient.SharingNfsCreate(share);
+            shareId = res.id;
 
             //set zfs property
             await apiClient.DatasetSet(datasetName, {
@@ -277,10 +262,6 @@ class FreeNASApiDriver extends CsiBaseDriver {
           return volume_context;
         }
         break;
-      /**
-       * TODO: smb need to be more defensive like iscsi and nfs
-       * ensuring the path is valid and the shareName
-       */
       case "smb":
         {
           properties = await apiClient.DatasetGet(datasetName, [
@@ -396,21 +377,8 @@ class FreeNASApiDriver extends CsiBaseDriver {
                 }
 
                 let shareId;
-                try {
-                    const res = await client.call("sharing.smb.create", [share]);
-                    shareId = res.id;
-                } catch(err) {
-                    if (err.toString().includes("already exists") || (err.error && err.error === 17)) {
-                        const existing = await client.call("sharing.smb.query", [[["name", "=", smbName]]]);
-                        if (existing && existing.length > 0) {
-                            shareId = existing[0].id;
-                        } else {
-                            throw err;
-                        }
-                    } else {
-                        throw err;
-                    }
-                }
+                const res = await apiClient.SharingSmbCreate(share);
+                shareId = res.id;
 
                 //set zfs property
                 await apiClient.DatasetSet(datasetName, {
@@ -539,7 +507,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
             extentAvailThreshold = null;
           }
 
-          const config = await client.call("iscsi.global.config");
+          const config = await apiClient.IscsiGetGlobalConfig();
           basename = config.basename;
           this.ctx.logger.verbose("FreeNAS ISCSI BASENAME: " + basename);
 
@@ -576,26 +544,12 @@ class FreeNASApiDriver extends CsiBaseDriver {
                   groups: targetGroups,
                 };
 
-                try {
-                    target = await client.call("iscsi.target.create", [targetData]);
-                    targetId = target.id;
-                } catch(err) {
-                     if (err.toString().includes("already exists") || (err.error && err.error === 17)) {
-                         const existing = await client.call("iscsi.target.query", [[["name", "=", iscsiName]]]);
-                         if (existing && existing.length > 0) {
-                             target = existing[0];
-                             targetId = target.id;
+                target = await apiClient.IscsiTargetCreate(targetData);
+                targetId = target.id;
 
-                             // Update groups if needed
-                             if (target.groups.length != targetGroups.length) {
-                                 target = await client.call("iscsi.target.update", [targetId, { groups: targetGroups }]);
-                             }
-                         } else {
-                             throw err;
-                         }
-                     } else {
-                         throw err;
-                     }
+                // Update groups if needed and target already existed
+                if (target.groups && target.groups.length != targetGroups.length) {
+                    target = await apiClient.IscsiTargetUpdate(targetId, { groups: targetGroups });
                 }
 
                 await apiClient.DatasetSet(datasetName, {
@@ -619,22 +573,8 @@ class FreeNASApiDriver extends CsiBaseDriver {
                   ro: false,
                 };
 
-                try {
-                    extent = await client.call("iscsi.extent.create", [extentData]);
-                    extentId = extent.id;
-                } catch (err) {
-                    if (err.toString().includes("already exists") || (err.error && err.error === 17)) {
-                         const existing = await client.call("iscsi.extent.query", [[["name", "=", iscsiName]]]);
-                         if (existing && existing.length > 0) {
-                             extent = existing[0];
-                             extentId = extent.id;
-                         } else {
-                             throw err;
-                         }
-                    } else {
-                        throw err;
-                    }
-                }
+                extent = await apiClient.IscsiExtentCreate(extentData);
+                extentId = extent.id;
 
                 await apiClient.DatasetSet(datasetName, {
                   [FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME]: extentId,
@@ -649,22 +589,8 @@ class FreeNASApiDriver extends CsiBaseDriver {
                   lunid: 0,
                 };
 
-                try {
-                    targetToExtent = await client.call("iscsi.targetextent.create", [targetToExtentData]);
-                    targetToExtentId = targetToExtent.id;
-                } catch(err) {
-                    if (err.toString().includes("already exists") || (err.error && err.error === 17) || JSON.stringify(err).includes("already in this target") || JSON.stringify(err).includes("LUN ID is already being used")) {
-                        const existing = await client.call("iscsi.targetextent.query", [[["target", "=", targetId], ["extent", "=", extentId]]]);
-                        if (existing && existing.length > 0) {
-                             targetToExtent = existing[0];
-                             targetToExtentId = targetToExtent.id;
-                         } else {
-                             throw err;
-                         }
-                    } else {
-                        throw err;
-                    }
-                }
+                targetToExtent = await apiClient.IscsiTargetExtentCreate(targetToExtentData);
+                targetToExtentId = targetToExtent.id;
 
                 await apiClient.DatasetSet(datasetName, {
                   [FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME]:
@@ -854,15 +780,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
           shareId = properties[FREENAS_NFS_SHARE_PROPERTY_NAME].value;
 
           if (zb.helpers.isPropertyValueSet(shareId)) {
-             try {
-                await client.call("sharing.nfs.delete", [shareId]);
-             } catch(err) {
-                 if (err.toString().includes("does not exist") || (err.error && err.error === 2)) {
-                     // OK
-                 } else {
-                     throw err;
-                 }
-             }
+             await apiClient.SharingNfsDelete(shareId);
              await apiClient.DatasetInherit(
                datasetName,
                FREENAS_NFS_SHARE_PROPERTY_NAME
@@ -888,15 +806,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
           shareId = properties[FREENAS_SMB_SHARE_PROPERTY_NAME].value;
 
           if (zb.helpers.isPropertyValueSet(shareId)) {
-             try {
-                await client.call("sharing.smb.delete", [shareId]);
-             } catch(err) {
-                 if (err.toString().includes("does not exist") || (err.error && err.error === 2)) {
-                     // OK
-                 } else {
-                     throw err;
-                 }
-             }
+             await apiClient.SharingSmbDelete(shareId);
              await apiClient.DatasetInherit(
                datasetName,
                FREENAS_SMB_SHARE_PROPERTY_NAME
@@ -929,14 +839,12 @@ class FreeNASApiDriver extends CsiBaseDriver {
 
           if (zb.helpers.isPropertyValueSet(targetId)) {
               try {
-                  await client.call("iscsi.target.delete", [targetId]);
+                  await apiClient.IscsiTargetDelete(targetId);
               } catch(err) {
-                 if (err.toString().includes("does not exist") || (err.error && err.error === 2)) {
-                     // OK
-                 } else if (err.toString().includes("is in use") || (err.error && err.error === 14)) {
-                     // Retry
+                 if (err.toString().includes("is in use") || (err.error && err.error === 14)) {
+                     // Retry if in use
                      await GeneralUtils.retry(5, 1000, async () => {
-                         await client.call("iscsi.target.delete", [targetId]);
+                         await apiClient.IscsiTargetDelete(targetId);
                      });
                  } else {
                      throw err;
@@ -949,15 +857,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
           }
 
           if (zb.helpers.isPropertyValueSet(extentId)) {
-              try {
-                  await client.call("iscsi.extent.delete", [extentId]);
-              } catch(err) {
-                 if (err.toString().includes("does not exist") || (err.error && err.error === 2)) {
-                     // OK
-                 } else {
-                     throw err;
-                 }
-              }
+              await apiClient.IscsiExtentDelete(extentId);
               await apiClient.DatasetInherit(
                  datasetName,
                  FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME
@@ -1020,24 +920,29 @@ class FreeNASApiDriver extends CsiBaseDriver {
   }
 
   /**
-   * Hypothetically this isn't needed. The middleware is supposed to reload stuff as appropriate.
+   * Expand volume notification to the storage backend.
+   * For iSCSI, we need to reload the service so the target reports the new size.
    *
    * @param {*} call
    * @param {*} datasetName
    * @returns
    */
   async expandVolume(call, datasetName) {
-    // TODO: fix me
     const driverShareType = this.getDriverShareType();
-    const client = await this.getJsonRpcClient();
+    const apiClient = await this.getTrueNASApiClient();
 
     switch (driverShareType) {
       case "iscsi":
-          // For API driver, we don't have SSH.
-          // We can only rely on API reload.
-          // SCALE middleware should handle resync?
-          // If not, we might need `service.reload`.
-          await client.call("service.reload", ["iscsitarget"]);
+          // Reload iSCSI service to update extent sizes
+          // SCALE middleware should handle this automatically in most cases,
+          // but we force a reload to ensure consistency
+          await apiClient.ServiceReload("iscsitarget");
+        break;
+      // NFS and SMB don't require service reload for size changes
+      case "nfs":
+      case "smb":
+      case "nvmeof":
+        // No action needed
         break;
     }
   }
@@ -1057,6 +962,8 @@ class FreeNASApiDriver extends CsiBaseDriver {
             ...this.options.httpConnection,
             logger: this.ctx.logger
         });
+        // Register cleanup handler to close WebSocket connection
+        this.cleanup.push(() => client.close());
         return client;
       }
     );

@@ -860,41 +860,45 @@ class Api {
   }
 
   // ============================================================================
-  // NVMe-oF MANAGEMENT
+  // NVMe-oF MANAGEMENT (TrueNAS SCALE 25.10+ uses nvmet.* namespace)
   // ============================================================================
 
   /**
    * Query NVMe-oF subsystems
+   * TrueNAS API: nvmet.subsys.query
    * @param {array} filters - Query filters
    */
   async NVMeOFSubsystemQuery(filters = []) {
-    return await this.query("nvmeof.subsystem.query", filters);
+    return await this.query("nvmet.subsys.query", filters);
   }
 
   /**
    * Create an NVMe-oF subsystem
+   * TrueNAS API: nvmet.subsys.create
    * @param {object} data - Subsystem configuration
    */
   async NVMeOFSubsystemCreate(data) {
-    return await this.call("nvmeof.subsystem.create", [data]);
+    return await this.call("nvmet.subsys.create", [data]);
   }
 
   /**
    * Update an NVMe-oF subsystem
+   * TrueNAS API: nvmet.subsys.update
    * @param {number} id - Subsystem ID
    * @param {object} data - Updated configuration
    */
   async NVMeOFSubsystemUpdate(id, data) {
-    return await this.call("nvmeof.subsystem.update", [id, data]);
+    return await this.call("nvmet.subsys.update", [id, data]);
   }
 
   /**
    * Delete an NVMe-oF subsystem
+   * TrueNAS API: nvmet.subsys.delete
    * @param {number} id - Subsystem ID
    */
   async NVMeOFSubsystemDelete(id) {
     try {
-      await this.call("nvmeof.subsystem.delete", [id]);
+      await this.call("nvmet.subsys.delete", [id]);
     } catch (error) {
       // Ignore "does not exist" errors
       if (error.message && error.message.includes("does not exist")) {
@@ -906,36 +910,40 @@ class Api {
 
   /**
    * Query NVMe-oF namespaces
+   * TrueNAS API: nvmet.namespace.query
    * @param {array} filters - Query filters
    */
   async NVMeOFNamespaceQuery(filters = []) {
-    return await this.query("nvmeof.namespace.query", filters);
+    return await this.query("nvmet.namespace.query", filters);
   }
 
   /**
    * Create an NVMe-oF namespace
+   * TrueNAS API: nvmet.namespace.create
    * @param {object} data - Namespace configuration
    */
   async NVMeOFNamespaceCreate(data) {
-    return await this.call("nvmeof.namespace.create", [data]);
+    return await this.call("nvmet.namespace.create", [data]);
   }
 
   /**
    * Update an NVMe-oF namespace
+   * TrueNAS API: nvmet.namespace.update
    * @param {number} id - Namespace ID
    * @param {object} data - Updated configuration
    */
   async NVMeOFNamespaceUpdate(id, data) {
-    return await this.call("nvmeof.namespace.update", [id, data]);
+    return await this.call("nvmet.namespace.update", [id, data]);
   }
 
   /**
    * Delete an NVMe-oF namespace
+   * TrueNAS API: nvmet.namespace.delete
    * @param {number} id - Namespace ID
    */
   async NVMeOFNamespaceDelete(id) {
     try {
-      await this.call("nvmeof.namespace.delete", [id]);
+      await this.call("nvmet.namespace.delete", [id]);
     } catch (error) {
       // Ignore "does not exist" errors
       if (error.message && error.message.includes("does not exist")) {
@@ -947,27 +955,30 @@ class Api {
 
   /**
    * Query NVMe-oF hosts
+   * TrueNAS API: nvmet.host.query
    * @param {array} filters - Query filters
    */
   async NVMeOFHostQuery(filters = []) {
-    return await this.query("nvmeof.host.query", filters);
+    return await this.query("nvmet.host.query", filters);
   }
 
   /**
    * Create an NVMe-oF host
+   * TrueNAS API: nvmet.host.create
    * @param {object} data - Host configuration
    */
   async NVMeOFHostCreate(data) {
-    return await this.call("nvmeof.host.create", [data]);
+    return await this.call("nvmet.host.create", [data]);
   }
 
   /**
    * Delete an NVMe-oF host
+   * TrueNAS API: nvmet.host.delete
    * @param {number} id - Host ID
    */
   async NVMeOFHostDelete(id) {
     try {
-      await this.call("nvmeof.host.delete", [id]);
+      await this.call("nvmet.host.delete", [id]);
     } catch (error) {
       // Ignore "does not exist" errors
       if (error.message && error.message.includes("does not exist")) {
@@ -979,17 +990,20 @@ class Api {
 
   /**
    * Query NVMe-oF ports
+   * TrueNAS API: nvmet.port.query
    * @param {array} filters - Query filters
    */
   async NVMeOFPortQuery(filters = []) {
-    return await this.query("nvmeof.port.query", filters);
+    return await this.query("nvmet.port.query", filters);
   }
 
   /**
-   * Get NVMe-oF listener addresses
+   * Get NVMe-oF listener addresses (transport address choices)
+   * TrueNAS API: nvmet.port.transport_address_choices
+   * @param {string} transport - Transport type: 'TCP' or 'RDMA'
    */
-  async NVMeOFGetListenerAddresses() {
-    return await this.call("nvmeof.get_listener_addresses");
+  async NVMeOFGetListenerAddresses(transport = "TCP") {
+    return await this.call("nvmet.port.transport_address_choices", [transport]);
   }
 }
 

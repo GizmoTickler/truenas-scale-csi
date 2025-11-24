@@ -631,11 +631,12 @@ class TrueNASApiDriver extends CsiBaseDriver {
     const subsystems = await httpApiClient.NVMeOFSubsystemQuery([["id", "=", parseInt(finalSubsystemId)]]);
     const subsystemNqn = subsystems[0].nqn;
 
-    // Get listener addresses
-    const listenerAddresses = await httpApiClient.NVMeOFGetListenerAddresses();
+    // Get listener addresses based on configured transport type
+    const transport = (this.options.nvmeof.transport || "tcp").toUpperCase();
+    const listenerAddresses = await httpApiClient.NVMeOFGetListenerAddresses(transport);
     const portal = listenerAddresses && listenerAddresses.length > 0
       ? listenerAddresses[0]
-      : this.options.nvmeof.targetPortal;
+      : this.options.nvmeof.targetAddress;
 
     // Return volume context for NVMe-oF
     return {

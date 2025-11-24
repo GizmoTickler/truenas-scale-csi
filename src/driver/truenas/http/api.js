@@ -10,7 +10,7 @@ const __REGISTRY_NS__ = "TrueNASWebSocketApi";
  * This class provides a clean interface to TrueNAS SCALE 25.04+ API
  * using WebSocket JSON-RPC 2.0 protocol only.
  *
- * All legacy support for FreeNAS and old TrueNAS versions has been removed.
+ * All legacy support for TrueNAS and old TrueNAS versions has been removed.
  *
  * API Documentation: https://api.truenas.com/v25.04.2/
  */

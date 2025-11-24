@@ -11,16 +11,16 @@ const uuidv4 = require("uuid").v4;
 const semver = require("semver");
 
 // TrueNAS SCALE share properties
-const FREENAS_NFS_SHARE_PROPERTY_NAME = "democratic-csi:truenas_nfs_share_id";
-const FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME =
+const TRUENAS_NFS_SHARE_PROPERTY_NAME = "democratic-csi:truenas_nfs_share_id";
+const TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME =
   "democratic-csi:truenas_iscsi_target_id";
-const FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME =
+const TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME =
   "democratic-csi:truenas_iscsi_extent_id";
-const FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME =
+const TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME =
   "democratic-csi:truenas_iscsi_targetextent_id";
-const FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME =
+const TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME =
   "democratic-csi:truenas_nvmeof_subsystem_id";
-const FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME =
+const TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME =
   "democratic-csi:truenas_nvmeof_namespace_id";
 
 // zfs common properties
@@ -44,9 +44,9 @@ const VOLUME_CONTEXT_PROVISIONER_DRIVER_PROPERTY_NAME =
 const VOLUME_CONTEXT_PROVISIONER_INSTANCE_ID_PROPERTY_NAME =
   "democratic-csi:volume_context_provisioner_instance_id";
 
-const __REGISTRY_NS__ = "FreeNASApiDriver";
+const __REGISTRY_NS__ = "TrueNASApiDriver";
 
-class FreeNASApiDriver extends CsiBaseDriver {
+class TrueNASApiDriver extends CsiBaseDriver {
   constructor(ctx, options) {
     super(...arguments);
 
@@ -218,13 +218,13 @@ class FreeNASApiDriver extends CsiBaseDriver {
     // Get dataset properties
     const properties = await httpApiClient.DatasetGet(datasetName, [
       "mountpoint",
-      FREENAS_NFS_SHARE_PROPERTY_NAME,
+      TRUENAS_NFS_SHARE_PROPERTY_NAME,
     ]);
 
     this.ctx.logger.debug("Dataset properties: %j", properties);
 
     const mountpoint = properties.mountpoint.value;
-    const shareId = properties[FREENAS_NFS_SHARE_PROPERTY_NAME].value;
+    const shareId = properties[TRUENAS_NFS_SHARE_PROPERTY_NAME].value;
 
     // Check if share already exists
     if (!zb.helpers.isPropertyValueSet(shareId)) {
@@ -270,7 +270,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
 
         // Store share ID in ZFS property
         await httpApiClient.DatasetSet(datasetName, {
-          [FREENAS_NFS_SHARE_PROPERTY_NAME]: share.id,
+          [TRUENAS_NFS_SHARE_PROPERTY_NAME]: share.id,
         });
       } catch (error) {
         // Check if share already exists for this path
@@ -287,7 +287,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
 
           // Store existing share ID
           await httpApiClient.DatasetSet(datasetName, {
-            [FREENAS_NFS_SHARE_PROPERTY_NAME]: existingShare.id,
+            [TRUENAS_NFS_SHARE_PROPERTY_NAME]: existingShare.id,
           });
         } else {
           throw new GrpcError(
@@ -313,14 +313,14 @@ class FreeNASApiDriver extends CsiBaseDriver {
     // Get dataset properties
     const properties = await httpApiClient.DatasetGet(datasetName, [
       "name",
-      FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
-      FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME,
-      FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME,
+      TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
+      TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME,
+      TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME,
     ]);
 
-    const targetId = properties[FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
-    const extentId = properties[FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME].value;
-    const targetExtentId = properties[FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME].value;
+    const targetId = properties[TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
+    const extentId = properties[TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME].value;
+    const targetExtentId = properties[TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME].value;
 
     // Check if already fully configured
     if (zb.helpers.isPropertyValueSet(targetExtentId)) {
@@ -366,7 +366,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
           this.ctx.logger.info(`iSCSI target created with ID: ${target.id}`);
 
           await httpApiClient.DatasetSet(datasetName, {
-            [FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME]: target.id,
+            [TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME]: target.id,
           });
         } catch (error) {
           if (error.message && error.message.includes("already exists")) {
@@ -375,7 +375,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
             if (targets && targets.length > 0) {
               target = targets[0];
               await httpApiClient.DatasetSet(datasetName, {
-                [FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME]: target.id,
+                [TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME]: target.id,
               });
             } else {
               throw new GrpcError(
@@ -436,7 +436,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
           this.ctx.logger.info(`iSCSI extent created with ID: ${extent.id}`);
 
           await httpApiClient.DatasetSet(datasetName, {
-            [FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME]: extent.id,
+            [TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME]: extent.id,
           });
         } catch (error) {
           if (error.message && error.message.includes("already exists")) {
@@ -445,7 +445,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
             if (extents && extents.length > 0) {
               extent = extents[0];
               await httpApiClient.DatasetSet(datasetName, {
-                [FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME]: extent.id,
+                [TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME]: extent.id,
               });
             } else {
               throw new GrpcError(
@@ -463,12 +463,12 @@ class FreeNASApiDriver extends CsiBaseDriver {
       if (!zb.helpers.isPropertyValueSet(targetExtentId)) {
         // Get current target and extent IDs from properties
         const currentProps = await httpApiClient.DatasetGet(datasetName, [
-          FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
-          FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME,
+          TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
+          TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME,
         ]);
 
-        const finalTargetId = currentProps[FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
-        const finalExtentId = currentProps[FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME].value;
+        const finalTargetId = currentProps[TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
+        const finalExtentId = currentProps[TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME].value;
 
         const targetExtentConfig = {
           target: parseInt(finalTargetId),
@@ -480,16 +480,16 @@ class FreeNASApiDriver extends CsiBaseDriver {
         this.ctx.logger.info(`iSCSI target-extent created with ID: ${targetExtent.id}`);
 
         await httpApiClient.DatasetSet(datasetName, {
-          [FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME]: targetExtent.id,
+          [TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME]: targetExtent.id,
         });
       }
     }
 
     // Get final target name for volume context
     const finalProps = await httpApiClient.DatasetGet(datasetName, [
-      FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
+      TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
     ]);
-    const finalTargetId = finalProps[FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
+    const finalTargetId = finalProps[TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
     const targets = await httpApiClient.ISCSITargetQuery([["id", "=", parseInt(finalTargetId)]]);
     const targetName = targets[0].name;
 
@@ -514,12 +514,12 @@ class FreeNASApiDriver extends CsiBaseDriver {
     // Get dataset properties
     const properties = await httpApiClient.DatasetGet(datasetName, [
       "name",
-      FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
-      FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME,
+      TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
+      TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME,
     ]);
 
-    const subsystemId = properties[FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
-    const namespaceId = properties[FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME].value;
+    const subsystemId = properties[TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
+    const namespaceId = properties[TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME].value;
 
     // Check if already fully configured
     if (zb.helpers.isPropertyValueSet(namespaceId)) {
@@ -560,7 +560,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
           this.ctx.logger.info(`NVMe-oF subsystem created with ID: ${subsystem.id}`);
 
           await httpApiClient.DatasetSet(datasetName, {
-            [FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME]: subsystem.id,
+            [TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME]: subsystem.id,
           });
         } catch (error) {
           if (error.message && error.message.includes("already exists")) {
@@ -569,7 +569,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
             if (subsystems && subsystems.length > 0) {
               subsystem = subsystems[0];
               await httpApiClient.DatasetSet(datasetName, {
-                [FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME]: subsystem.id,
+                [TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME]: subsystem.id,
               });
             } else {
               throw new GrpcError(
@@ -586,9 +586,9 @@ class FreeNASApiDriver extends CsiBaseDriver {
       // Create namespace
       if (!zb.helpers.isPropertyValueSet(namespaceId)) {
         const currentProps = await httpApiClient.DatasetGet(datasetName, [
-          FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
+          TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
         ]);
-        const finalSubsystemId = currentProps[FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
+        const finalSubsystemId = currentProps[TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
 
         const namespacePath = `/dev/zvol/${datasetName}`;
 
@@ -602,16 +602,16 @@ class FreeNASApiDriver extends CsiBaseDriver {
         this.ctx.logger.info(`NVMe-oF namespace created with ID: ${namespace.id}`);
 
         await httpApiClient.DatasetSet(datasetName, {
-          [FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME]: namespace.id,
+          [TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME]: namespace.id,
         });
       }
     }
 
     // Get final subsystem NQN for volume context
     const finalProps = await httpApiClient.DatasetGet(datasetName, [
-      FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
+      TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
     ]);
-    const finalSubsystemId = finalProps[FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
+    const finalSubsystemId = finalProps[TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
     const subsystems = await httpApiClient.NVMeOFSubsystemQuery([["id", "=", parseInt(finalSubsystemId)]]);
     const subsystemNqn = subsystems[0].nqn;
 
@@ -677,10 +677,10 @@ class FreeNASApiDriver extends CsiBaseDriver {
   async deleteNFSShare(datasetName, httpApiClient, zb) {
     try {
       const properties = await httpApiClient.DatasetGet(datasetName, [
-        FREENAS_NFS_SHARE_PROPERTY_NAME,
+        TRUENAS_NFS_SHARE_PROPERTY_NAME,
       ]);
 
-      const shareId = properties[FREENAS_NFS_SHARE_PROPERTY_NAME].value;
+      const shareId = properties[TRUENAS_NFS_SHARE_PROPERTY_NAME].value;
 
       if (zb.helpers.isPropertyValueSet(shareId)) {
         this.ctx.logger.debug(`Deleting NFS share ID: ${shareId}`);
@@ -689,7 +689,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
         // Remove property
         await httpApiClient.DatasetInherit(
           datasetName,
-          FREENAS_NFS_SHARE_PROPERTY_NAME
+          TRUENAS_NFS_SHARE_PROPERTY_NAME
         );
       }
     } catch (error) {
@@ -706,14 +706,14 @@ class FreeNASApiDriver extends CsiBaseDriver {
   async deleteISCSIShare(datasetName, httpApiClient, zb) {
     try {
       const properties = await httpApiClient.DatasetGet(datasetName, [
-        FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
-        FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME,
-        FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME,
+        TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME,
+        TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME,
+        TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME,
       ]);
 
-      const targetId = properties[FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
-      const extentId = properties[FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME].value;
-      const targetExtentId = properties[FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME].value;
+      const targetId = properties[TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME].value;
+      const extentId = properties[TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME].value;
+      const targetExtentId = properties[TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME].value;
 
       // Delete target-extent association first
       if (zb.helpers.isPropertyValueSet(targetExtentId)) {
@@ -721,7 +721,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
         await httpApiClient.ISCSITargetExtentDelete(parseInt(targetExtentId), true);
         await httpApiClient.DatasetInherit(
           datasetName,
-          FREENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME
+          TRUENAS_ISCSI_TARGETTOEXTENT_ID_PROPERTY_NAME
         );
       }
 
@@ -731,7 +731,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
         await httpApiClient.ISCSIExtentDelete(parseInt(extentId), false, true);
         await httpApiClient.DatasetInherit(
           datasetName,
-          FREENAS_ISCSI_EXTENT_ID_PROPERTY_NAME
+          TRUENAS_ISCSI_EXTENT_ID_PROPERTY_NAME
         );
       }
 
@@ -741,7 +741,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
         await httpApiClient.ISCSITargetDelete(parseInt(targetId), true);
         await httpApiClient.DatasetInherit(
           datasetName,
-          FREENAS_ISCSI_TARGET_ID_PROPERTY_NAME
+          TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME
         );
       }
     } catch (error) {
@@ -758,12 +758,12 @@ class FreeNASApiDriver extends CsiBaseDriver {
   async deleteNVMeOFShare(datasetName, httpApiClient, zb) {
     try {
       const properties = await httpApiClient.DatasetGet(datasetName, [
-        FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
-        FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME,
+        TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME,
+        TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME,
       ]);
 
-      const subsystemId = properties[FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
-      const namespaceId = properties[FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME].value;
+      const subsystemId = properties[TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME].value;
+      const namespaceId = properties[TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME].value;
 
       // Delete namespace first
       if (zb.helpers.isPropertyValueSet(namespaceId)) {
@@ -771,7 +771,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
         await httpApiClient.NVMeOFNamespaceDelete(parseInt(namespaceId));
         await httpApiClient.DatasetInherit(
           datasetName,
-          FREENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME
+          TRUENAS_NVMEOF_NAMESPACE_ID_PROPERTY_NAME
         );
       }
 
@@ -781,7 +781,7 @@ class FreeNASApiDriver extends CsiBaseDriver {
         await httpApiClient.NVMeOFSubsystemDelete(parseInt(subsystemId));
         await httpApiClient.DatasetInherit(
           datasetName,
-          FREENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME
+          TRUENAS_NVMEOF_SUBSYSTEM_ID_PROPERTY_NAME
         );
       }
     } catch (error) {
@@ -927,13 +927,10 @@ class FreeNASApiDriver extends CsiBaseDriver {
    */
   getDriverZfsResourceType() {
     switch (this.options.driver) {
-      case "freenas-api-nfs":
-      case "truenas-api-nfs":
-      case "freenas-api-smb":
-      case "truenas-api-smb":
+      case "truenas-nfs":
         return "filesystem";
-      case "freenas-api-iscsi":
-      case "truenas-api-iscsi":
+      case "truenas-iscsi":
+      case "truenas-nvmeof":
         return "volume";
       default:
         throw new Error("unknown driver: " + this.ctx.args.driver);
@@ -942,15 +939,12 @@ class FreeNASApiDriver extends CsiBaseDriver {
 
   getDriverShareType() {
     switch (this.options.driver) {
-      case "freenas-api-nfs":
-      case "truenas-api-nfs":
+      case "truenas-nfs":
         return "nfs";
-      case "freenas-api-smb":
-      case "truenas-api-smb":
-        return "smb";
-      case "freenas-api-iscsi":
-      case "truenas-api-iscsi":
+      case "truenas-iscsi":
         return "iscsi";
+      case "truenas-nvmeof":
+        return "nvmeof";
       default:
         throw new Error("unknown driver: " + this.ctx.args.driver);
     }
@@ -3416,4 +3410,4 @@ class FreeNASApiDriver extends CsiBaseDriver {
   }
 }
 
-module.exports.FreeNASApiDriver = FreeNASApiDriver;
+module.exports.TrueNASApiDriver = TrueNASApiDriver;

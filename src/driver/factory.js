@@ -1,4 +1,4 @@
-const { FreeNASApiDriver } = require("./freenas/api");
+const { TrueNASApiDriver } = require("./truenas/api");
 
 function factory(ctx, options) {
   switch (options.driver) {
@@ -6,7 +6,7 @@ function factory(ctx, options) {
     case "truenas-nfs":
     case "truenas-iscsi":
     case "truenas-nvmeof":
-      return new FreeNASApiDriver(ctx, options);
+      return new TrueNASApiDriver(ctx, options);
     default:
       throw new Error("invalid csi driver: " + options.driver + ". Only truenas-nfs, truenas-iscsi, and truenas-nvmeof are supported.");
   }

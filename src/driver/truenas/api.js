@@ -10,7 +10,16 @@ const Handlebars = require("handlebars");
 const uuidv4 = require("uuid").v4;
 const semver = require("semver");
 
-// TrueNAS SCALE share properties
+/**
+ * TrueNAS SCALE ZFS property names
+ *
+ * BACKWARD COMPATIBILITY NOTE:
+ * These property names use the "democratic-csi:" prefix inherited from the
+ * original democratic-csi project (https://github.com/democratic-csi/democratic-csi).
+ * They are intentionally kept unchanged for backward compatibility with existing
+ * volumes that have these properties stored on their ZFS datasets/zvols.
+ * Changing these would break existing deployments.
+ */
 const TRUENAS_NFS_SHARE_PROPERTY_NAME = "democratic-csi:truenas_nfs_share_id";
 const TRUENAS_ISCSI_TARGET_ID_PROPERTY_NAME =
   "democratic-csi:truenas_iscsi_target_id";

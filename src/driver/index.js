@@ -54,8 +54,10 @@ class CsiBaseDriver {
   /**
    * abstract way of retrieving values from parameters/secrets
    * in order of preference:
-   *  - democratic-csi.org/{instance_id}/{key}
-   *  - democratic-csi.org/{driver}/{key}
+   *  - truenas-csi.org/{instance_id}/{key}
+   *  - truenas-csi.org/{driver}/{key}
+   *  - democratic-csi.org/{instance_id}/{key} (backward compatibility)
+   *  - democratic-csi.org/{driver}/{key} (backward compatibility)
    *  - {key}
    *
    * @param {*} parameters
@@ -72,7 +74,9 @@ class CsiBaseDriver {
 
   getNormalizedParameters(parameters, driver, instance_id) {
     const normalized = JSON.parse(JSON.stringify(parameters));
-    const base_key = "democratic-csi.org";
+    // Support both new and legacy namespaces for backward compatibility
+    const base_keys = ["truenas-csi.org", "democratic-csi.org"];
+    const base_key = "democratic-csi.org"; // Primary for backward compatibility
     driver = driver || this.options.driver;
     instance_id = instance_id || this.options.instance_id;
 

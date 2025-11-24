@@ -1,7 +1,7 @@
 const _ = require("lodash");
 const WebSocket = require("ws");
 const { stringify } = require("../../../utils/general");
-const USER_AGENT = "democratic-csi-driver";
+const USER_AGENT = "truenas-csi-driver";
 
 /**
  * TrueNAS SCALE 25.04+ WebSocket JSON-RPC 2.0 Client

@@ -1,25 +1,20 @@
-![Image](https://img.shields.io/docker/pulls/democraticcsi/democratic-csi.svg)
-![Image](https://img.shields.io/github/actions/workflow/status/democratic-csi/democratic-csi/main.yml?branch=master&style=flat-square)
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/democratic-csi)](https://artifacthub.io/packages/search?repo=democratic-csi)
+# TrueNAS Scale CSI Driver
 
-# Introduction
+[![Build Status](https://img.shields.io/github/actions/workflow/status/GizmoTickler/truenas-scale-csi/ci.yml?branch=main&style=flat-square)](https://github.com/GizmoTickler/truenas-scale-csi/actions)
+[![License](https://img.shields.io/github/license/GizmoTickler/truenas-scale-csi?style=flat-square)](LICENSE)
 
-`democratic-csi` implements the `csi` (container storage interface) spec
-providing storage for various container orchestration systems (ie: Kubernetes).
+A Kubernetes CSI (Container Storage Interface) driver for TrueNAS SCALE, providing
+dynamic storage provisioning via NFS, iSCSI, and NVMe-oF protocols.
 
-This version focuses exclusively on providing storage via iSCSI/NFS from
-**TrueNAS SCALE 25.04+** and NVMe-oF from **TrueNAS SCALE 25.10+** using the modern WebSocket JSON-RPC 2.0 API.
+## Credits
 
-The drivers implement the depth and breadth of the `csi` spec, so you
-have access to resizing, snapshots, clones, etc functionality.
+This project is a fork of [democratic-csi](https://github.com/democratic-csi/democratic-csi),
+an excellent CSI driver framework created by [Travis Glenn Hansen](https://github.com/travisghansen).
+We are grateful for the foundation that democratic-csi provides.
 
-`democratic-csi` is 2 things:
-
-- TrueNAS SCALE 25.04+ CSI driver implementations
-  - `truenas-nfs` (manages ZFS datasets to share over NFS)
-  - `truenas-iscsi` (manages ZFS zvols to share over iSCSI)
-  - `truenas-nvmeof` (manages ZFS zvols to share over NVMe-oF)
-- framework for developing `csi` drivers
+This fork focuses exclusively on TrueNAS SCALE 25.04+ with the modern WebSocket JSON-RPC 2.0 API,
+removing support for legacy SSH-based drivers and other storage backends to provide a streamlined,
+maintainable codebase specifically optimized for TrueNAS SCALE deployments.
 
 ## Key Features
 
@@ -30,24 +25,27 @@ have access to resizing, snapshots, clones, etc functionality.
 - **Persistent Connection**: Auto-reconnecting WebSocket with authentication
 - **API Key Auth**: Secure authentication via TrueNAS API keys
 
-If you have any interest in providing a `csi` driver, simply open an issue to
-discuss. The project provides an extensive framework to build from making it
-relatively easy to implement new drivers.
+## Supported Drivers
 
-# Installation
+| Driver | Protocol | TrueNAS Version | Description |
+|--------|----------|-----------------|-------------|
+| `truenas-nfs` | NFS | SCALE 25.04+ | ZFS datasets shared over NFS |
+| `truenas-iscsi` | iSCSI | SCALE 25.04+ | ZFS zvols shared over iSCSI |
+| `truenas-nvmeof` | NVMe-oF | SCALE 25.10+ | ZFS zvols shared over NVMe-oF |
 
-Predominantly 3 things are needed:
+## Installation
 
-- node prep (ie: your kubernetes cluster nodes)
-- server prep (ie: your storage server)
-- deploy the driver into the cluster (`helm` chart provided with sample
-  `values.yaml`)
+### Prerequisites
 
-## Node Prep
+1. **TrueNAS SCALE 25.04+** with API access enabled
+2. **Kubernetes cluster** with CSI support
+3. **Node packages** installed based on storage protocol (see [Node Prep](#node-prep))
+
+### Node Prep
 
 Install the required packages on your Kubernetes cluster nodes based on which storage protocol(s) you plan to use.
 
-### NFS
+#### NFS
 
 ```bash
 # RHEL / CentOS
@@ -57,16 +55,15 @@ sudo yum install -y nfs-utils
 sudo apt-get install -y nfs-common
 ```
 
-### iscsi
+#### iSCSI
 
 Note that `multipath` is supported for the `iscsi`-based drivers. Simply setup
 multipath to your liking and set multiple portals in the config as appropriate.
 
 If you are running Kubernetes with rancher/rke please see the following:
-
 - https://github.com/rancher/rke/issues/1846
 
-#### RHEL / CentOS
+##### RHEL / CentOS
 
 ```bash
 # Install the following system packages
@@ -84,9 +81,9 @@ sudo systemctl enable iscsi
 sudo systemctl start iscsi
 ```
 
-#### Ubuntu / Debian
+##### Ubuntu / Debian
 
-```
+```bash
 # Install the following system packages
 sudo apt-get install -y open-iscsi lsscsi sg3-utils multipath-tools scsitools
 
@@ -108,14 +105,10 @@ sudo service open-iscsi start
 sudo systemctl status open-iscsi
 ```
 
-#### [Talos](https://www.talos.dev/)
+##### Talos
 
-To use iscsi storage in kubernetes cluster in talos these steps are needed which are similar to the ones explained in https://www.talos.dev/v1.1/kubernetes-guides/configuration/replicated-local-storage-with-openebs-jiva/#patching-the-jiva-installation
-
-##### Patch nodes
-
-since talos does not have iscsi support by default, the iscsi extension is needed
-create a `patch.yaml` file with
+To use iSCSI storage in a Kubernetes cluster with [Talos](https://www.talos.dev/),
+the iscsi extension is needed. Create a `patch.yaml` file:
 
 ```yaml
 - op: add
@@ -124,21 +117,14 @@ create a `patch.yaml` file with
     - image: ghcr.io/siderolabs/iscsi-tools:v0.1.1
 ```
 
-and apply the patch across all of your nodes
+Apply the patch and upgrade your nodes:
 
 ```bash
 talosctl -e <endpoint ip/hostname> -n <node ip/hostname> patch mc -p @patch.yaml
-```
-
-the extension will not activate until you "upgrade" the nodes, even if there is no update, use the latest version of talos installer.
-VERIFY THE TALOS VERSION IN THIS COMMAND BEFORE RUNNING IT AND READ THE [OpenEBS Jiva](https://www.talos.dev/v1.1/kubernetes-guides/configuration/replicated-local-storage-with-openebs-jiva/#patching-the-jiva-installation).
-upgrade all of the nodes in the cluster to get the extension
-
-```bash
 talosctl -e <endpoint ip/hostname> -n <node ip/hostname> upgrade --image=ghcr.io/siderolabs/installer:v1.1.1
 ```
 
-in your `values.yaml` file make sure to enable these settings
+In your `values.yaml` file, enable these settings:
 
 ```yaml
 node:
@@ -153,21 +139,18 @@ node:
     iscsiDirHostPathType: ""
 ```
 
-and continue your democratic installation as usuall with other iscsi drivers.
+##### Privileged Namespace
 
-#### Privileged Namespace
-
-democratic-csi requires privileged access to the nodes, so the namespace should allow for privileged pods. One way of doing it is via [namespace labels](https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-namespace-labels/).
-Add the followin label to the democratic-csi installation namespace `pod-security.kubernetes.io/enforce=privileged`
-
-```
-kubectl label --overwrite namespace democratic-csi pod-security.kubernetes.io/enforce=privileged
-```
-
-### NVMe-oF
+The CSI driver requires privileged access to nodes. Add the following label to your installation namespace:
 
 ```bash
-# Install nvme-cli tools (optional - tools are included in democratic-csi images)
+kubectl label --overwrite namespace truenas-csi pod-security.kubernetes.io/enforce=privileged
+```
+
+#### NVMe-oF
+
+```bash
+# Install nvme-cli tools (optional - tools are included in container images)
 apt-get install -y nvme-cli
 
 # Install kernel modules
@@ -196,9 +179,7 @@ cat /sys/module/nvme_core/parameters/multipath
 nvme_core.multipath=N
 ```
 
-## Server Prep
-
-### TrueNAS SCALE 25.04+ (truenas-nfs, truenas-iscsi, truenas-nvmeof)
+### TrueNAS SCALE Configuration
 
 **Required**: TrueNAS SCALE 25.04 or later
 
@@ -206,7 +187,7 @@ These drivers use the WebSocket JSON-RPC 2.0 API exclusively - **no SSH required
 All operations are performed via a persistent WebSocket connection to the
 TrueNAS API endpoint (`wss://host/api/current`).
 
-#### TrueNAS Configuration
+#### TrueNAS Setup
 
 1. **Enable API Access**
    - Navigate to **Settings → API Keys**
@@ -226,68 +207,40 @@ TrueNAS API endpoint (`wss://host/api/current`).
    - **Important**: Volume and snapshot datasets should be siblings, not nested
 
 3. **Configure Services**
-   Ensure the appropriate services are enabled and running:
 
    **For NFS (`truenas-nfs`)**:
    - Navigate to **Sharing → NFS**
-   - Ensure NFS service is enabled (will be started automatically when shares are created)
-   - No pre-configuration needed - shares are created dynamically by the CSI driver
+   - Ensure NFS service is enabled
+   - Shares are created dynamically by the CSI driver
 
    **For iSCSI (`truenas-iscsi`)**:
    - Navigate to **Sharing → iSCSI**
    - Create Portal (default port 3260)
-   - Create Initiator Group (allow appropriate initiators or leave empty for all)
-   - Optionally configure CHAP authentication
-   - Note the Portal Group ID and Initiator Group ID for configuration
-   - Use TrueNAS UI or API to get IDs:
-     ```bash
-     # Get Portal IDs
-     curl -H "Authorization: Bearer YOUR_API_KEY" \
-       https://truenas.example.com/api/v2.0/iscsi/portal
-
-     # Get Initiator Group IDs
-     curl -H "Authorization: Bearer YOUR_API_KEY" \
-       https://truenas.example.com/api/v2.0/iscsi/initiator
-     ```
+   - Create Initiator Group
    - Targets and extents are created dynamically by the CSI driver
 
    **For NVMe-oF (`truenas-nvmeof`)**:
    - Navigate to **Sharing → NVMe-oF**
    - Ensure NVMe-oF service is configured
    - Subsystems and namespaces are created dynamically by the CSI driver
-   - Configure transport (TCP recommended, port 4420)
 
 4. **Network Configuration**
    - Ensure the TrueNAS system is reachable from your Kubernetes cluster
-   - Open required ports in firewall:
+   - Open required ports:
      - **WebSocket API**: 443 (HTTPS) or 80 (HTTP)
      - **NFS**: 2049, 111, 20048
      - **iSCSI**: 3260 (default)
      - **NVMe-oF**: 4420 (TCP default)
 
-5. **TLS/SSL Configuration**
-   - For production use, configure a valid TLS certificate
-   - For testing, you can use self-signed certificates with `allowInsecure: true`
-   - Navigate to **Settings → Certificates** to manage certificates
-
-#### Example Configuration
-
-See the `examples/` directory for complete configuration examples:
-- `examples/truenas-nfs.yaml` - NFS driver configuration
-- `examples/truenas-iscsi.yaml` - iSCSI driver configuration
-- `examples/truenas-nvmeof.yaml` - NVMe-oF driver configuration
-
-Each example includes detailed comments explaining all configuration options.
-
-## Helm Installation
+### Helm Installation
 
 ```bash
-# Add the democratic-csi helm repository
-helm repo add democratic-csi https://democratic-csi.github.io/charts/
+# Add the helm repository
+helm repo add truenas-csi https://gizmotickler.github.io/truenas-scale-csi/
 helm repo update
 
 # Search for available charts
-helm search repo democratic-csi/
+helm search repo truenas-csi/
 
 # Copy and edit the appropriate values file from examples/
 # - examples/truenas-nfs.yaml
@@ -297,38 +250,37 @@ helm search repo democratic-csi/
 # Install NFS driver
 helm upgrade --install \
   --values truenas-nfs.yaml \
-  --namespace democratic-csi \
+  --namespace truenas-csi \
   --create-namespace \
-  truenas-nfs democratic-csi/democratic-csi
+  truenas-nfs truenas-csi/truenas-scale-csi
 
 # Install iSCSI driver
 helm upgrade --install \
   --values truenas-iscsi.yaml \
-  --namespace democratic-csi \
+  --namespace truenas-csi \
   --create-namespace \
-  truenas-iscsi democratic-csi/democratic-csi
+  truenas-iscsi truenas-csi/truenas-scale-csi
 
 # Install NVMe-oF driver
 helm upgrade --install \
   --values truenas-nvmeof.yaml \
-  --namespace democratic-csi \
+  --namespace truenas-csi \
   --create-namespace \
-  truenas-nvmeof democratic-csi/democratic-csi
+  truenas-nvmeof truenas-csi/truenas-scale-csi
 ```
 
 ### Non-Standard Kubelet Paths
 
-Some distributions, such as `minikube` and `microk8s`, use non-standard
-kubelet paths. In such cases, specify the kubelet host path during installation:
+Some distributions use non-standard kubelet paths:
 
 ```bash
 # microk8s example
-microk8s helm upgrade --install \
+helm upgrade --install \
   --values truenas-nfs.yaml \
   --set node.kubeletHostPath="/var/snap/microk8s/common/var/lib/kubelet" \
-  --namespace democratic-csi \
+  --namespace truenas-csi \
   --create-namespace \
-  truenas-nfs democratic-csi/democratic-csi
+  truenas-nfs truenas-csi/truenas-scale-csi
 ```
 
 Common non-standard kubelet paths:
@@ -338,10 +290,9 @@ Common non-standard kubelet paths:
 
 ### OpenShift
 
-`democratic-csi` works with OpenShift. Set these parameters during helm installation:
+Set these parameters during helm installation:
 
 ```bash
-# Required parameters
 --set node.rbac.openshift.privileged=true
 --set node.driver.localtimeHostPath=false
 
@@ -349,40 +300,47 @@ Common non-standard kubelet paths:
 --set controller.rbac.openshift.privileged=true
 ```
 
-### Nomad
-
-`democratic-csi` works with Nomad in a limited capacity. See the [Nomad docs](docs/nomad.md) for details.
-
 ## Multiple Deployments
 
-You can install multiple deployments of any driver. Requirements:
+You can install multiple deployments of any driver:
 
 - Use a unique helm release name for each deployment
 - Set a unique `csiDriver.name` in the values file (per cluster)
 - Use unique storage class names (per cluster)
 - Use a unique parent dataset for each deployment
-- For `iscsi` and `nvmeof`, asset/share names are global - use `nameTemplate`, `namePrefix`, and `nameSuffix` to avoid collisions
+- For `iscsi` and `nvmeof`, use `nameTemplate`, `namePrefix`, and `nameSuffix` to avoid collisions
 
-# Snapshot Support
+## Snapshot Support
 
 Install the snapshot controller once per cluster:
 
-**Option 1**: Use the democratic-csi chart
-- https://github.com/democratic-csi/charts/tree/master/stable/snapshot-controller
-
-**Option 2**: Use the upstream kubernetes-csi snapshotter
+**Option 1**: Use the upstream kubernetes-csi snapshotter
 - https://github.com/kubernetes-csi/external-snapshotter/tree/master/client/config/crd
 - https://github.com/kubernetes-csi/external-snapshotter/tree/master/deploy/kubernetes/snapshot-controller
 
-Then install `democratic-csi` with `volumeSnapshotClasses` defined in your values file.
+Then install with `volumeSnapshotClasses` defined in your values file.
 
 **Resources:**
 - https://kubernetes.io/docs/concepts/storage/volume-snapshots/
 - https://github.com/kubernetes-csi/external-snapshotter#usage
 
-# Additional Resources
+## Configuration Examples
+
+See the `examples/` directory for complete configuration examples:
+- `examples/truenas-nfs.yaml` - NFS driver configuration
+- `examples/truenas-iscsi.yaml` - iSCSI driver configuration
+- `examples/truenas-nvmeof.yaml` - NVMe-oF driver configuration
+
+## Additional Resources
 
 - [TrueNAS SCALE 25.04 API Documentation](https://api.truenas.com/v25.04.2/jsonrpc.html)
 - [TrueNAS API Client Reference](https://github.com/truenas/api_client)
 - [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
-- [democratic-csi Charts Repository](https://github.com/democratic-csi/charts)
+- [Original democratic-csi Project](https://github.com/democratic-csi/democratic-csi)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+This project is based on [democratic-csi](https://github.com/democratic-csi/democratic-csi)
+by Travis Glenn Hansen, also licensed under the MIT License.

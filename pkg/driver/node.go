@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -407,8 +408,11 @@ func (d *Driver) stageISCSIVolume(ctx context.Context, volumeContext map[string]
 		}
 	}
 
-	// Connect to iSCSI target
-	devicePath, err := util.ISCSIConnect(portal, iqn, lun)
+	// Connect to iSCSI target with configurable timeout
+	connectOpts := &util.ISCSIConnectOptions{
+		DeviceTimeout: time.Duration(d.config.ISCSI.DeviceWaitTimeout) * time.Second,
+	}
+	devicePath, err := util.ISCSIConnectWithOptions(portal, iqn, lun, connectOpts)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to connect iSCSI: %v", err)
 	}

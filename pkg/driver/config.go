@@ -138,6 +138,9 @@ type ISCSIConfig struct {
 
 	// ExtentAvailThreshold is the threshold for space warnings (0-100)
 	ExtentAvailThreshold int `yaml:"extentAvailThreshold"`
+
+	// DeviceWaitTimeout is the timeout for waiting for iSCSI devices to appear in seconds (default: 60)
+	DeviceWaitTimeout int `yaml:"deviceWaitTimeout"`
 }
 
 // ISCSITargetGroup represents a portal/initiator group configuration.
@@ -225,6 +228,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.ISCSI.ExtentRpm == "" {
 		cfg.ISCSI.ExtentRpm = "SSD"
+	}
+	if cfg.ISCSI.DeviceWaitTimeout == 0 {
+		cfg.ISCSI.DeviceWaitTimeout = 60 // Default 60 seconds
 	}
 	if cfg.NVMeoF.Transport == "" {
 		cfg.NVMeoF.Transport = "tcp"

@@ -1,10 +1,13 @@
 module github.com/GizmoTickler/truenas-scale-csi
 
-go 1.25.4
+go 1.23.0
+
+toolchain go1.24.7
 
 require (
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/gorilla/websocket v1.5.3
+	golang.org/x/sync v0.12.0
 	google.golang.org/grpc v1.62.1
 	google.golang.org/protobuf v1.33.0
 	gopkg.in/yaml.v3 v3.0.1

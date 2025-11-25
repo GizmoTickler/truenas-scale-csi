@@ -67,15 +67,16 @@ func TestDeleteVolume(t *testing.T) {
 
 	// Pre-create volume
 	volName := "vol-delete"
-	mockClient.DatasetCreate(&truenas.DatasetCreateParams{
+	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{
 		Name: "pool/parent/" + volName,
 	})
+	assert.NoError(t, err)
 
 	// Test Case 1: Success
 	req := &csi.DeleteVolumeRequest{
 		VolumeId: volName,
 	}
-	_, err := d.DeleteVolume(context.Background(), req)
+	_, err = d.DeleteVolume(context.Background(), req)
 	assert.NoError(t, err)
 
 	// Verify dataset deleted
@@ -105,9 +106,10 @@ func TestCreateSnapshot(t *testing.T) {
 
 	// Pre-create source volume
 	volName := "vol-snap"
-	mockClient.DatasetCreate(&truenas.DatasetCreateParams{
+	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{
 		Name: "pool/parent/" + volName,
 	})
+	assert.NoError(t, err)
 
 	// Test Case 1: Success
 	req := &csi.CreateSnapshotRequest{
@@ -146,14 +148,16 @@ func TestDeleteSnapshot(t *testing.T) {
 	// Pre-create snapshot
 	snapName := "snap-delete"
 	volName := "vol-snap-del"
-	mockClient.DatasetCreate(&truenas.DatasetCreateParams{Name: "pool/parent/" + volName})
-	mockClient.SnapshotCreate("pool/parent/"+volName, snapName)
+	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{Name: "pool/parent/" + volName})
+	assert.NoError(t, err)
+	_, err = mockClient.SnapshotCreate("pool/parent/"+volName, snapName)
+	assert.NoError(t, err)
 
 	// Test Case 1: Success
 	req := &csi.DeleteSnapshotRequest{
 		SnapshotId: snapName,
 	}
-	_, err := d.DeleteSnapshot(context.Background(), req)
+	_, err = d.DeleteSnapshot(context.Background(), req)
 	assert.NoError(t, err)
 
 	// Verify snapshot deleted
@@ -177,10 +181,11 @@ func TestControllerExpandVolume(t *testing.T) {
 
 	// Pre-create volume
 	volName := "vol-expand"
-	mockClient.DatasetCreate(&truenas.DatasetCreateParams{
+	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{
 		Name:    "pool/parent/" + volName,
 		Volsize: 1024,
 	})
+	assert.NoError(t, err)
 
 	// Test Case 1: Success
 	req := &csi.ControllerExpandVolumeRequest{

@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
 
       - name: Install Helm
         uses: azure/setup-helm@v4.3.0
@@ -53,14 +55,14 @@ jobs:
             VERSION="${{ github.event.release.tag_name }}"
             VERSION="${VERSION#v}"
           else
-            # Use version from Chart.yaml for push events
-            VERSION=$(grep '^version:' charts/${{ env.CHART_NAME }}/Chart.yaml | awk '{print $2}')
+            # Use latest git tag for push events (strip 'v' prefix)
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+            VERSION="${VERSION#v}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Chart version: ${VERSION}"
 
-      - name: Update chart version on release
-        if: github.event_name == 'release'
+      - name: Update chart version
         run: |
           VERSION="${{ steps.chart_version.outputs.version }}"
 

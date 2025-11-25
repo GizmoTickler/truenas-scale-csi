@@ -95,6 +95,9 @@ spec:
             - name: kubelet-dir
               mountPath: {{ include "truenas-csi.kubeletDir" . }}
               mountPropagation: Bidirectional
+            - name: host-root
+              mountPath: /host
+              mountPropagation: HostToContainer
             - name: host-dev
               mountPath: /dev
             - name: host-sys
@@ -152,6 +155,10 @@ spec:
         - name: kubelet-dir
           hostPath:
             path: {{ include "truenas-csi.kubeletDir" . }}
+            type: Directory
+        - name: host-root
+          hostPath:
+            path: /
             type: Directory
         - name: host-dev
           hostPath:

@@ -1,5 +1,7 @@
 # Build stage
-FROM golang:1.23-bookworm AS builder
+FROM golang:1.25.4-alpine3.22 AS builder
+
+RUN apk add --no-cache git
 
 WORKDIR /build
 
@@ -21,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 ######################
 # Runtime image
 ######################
-FROM debian:12-slim
+FROM alpine:3.22
 
 LABEL org.opencontainers.image.source="https://github.com/GizmoTickler/truenas-scale-csi"
 LABEL org.opencontainers.image.url="https://github.com/GizmoTickler/truenas-scale-csi"
@@ -29,24 +31,20 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.title="TrueNAS Scale CSI Driver"
 LABEL org.opencontainers.image.description="Kubernetes CSI driver for TrueNAS SCALE"
 
-ENV DEBIAN_FRONTEND=noninteractive
-
 # Install runtime dependencies
-# - nfs-common: NFS client for mounting NFS shares
+# - nfs-utils: NFS client for mounting NFS shares
 # - e2fsprogs, xfsprogs, btrfs-progs: filesystem tools for formatting
 # - util-linux: findmnt, blkid utilities
 # - ca-certificates: for HTTPS connections to TrueNAS API
 # Note: open-iscsi and nvme-cli are NOT installed in container
 # because we use wrapper scripts to run commands on the host
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
     ca-certificates \
-    nfs-common \
+    nfs-utils \
     e2fsprogs \
     xfsprogs \
     btrfs-progs \
-    util-linux \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/cache/apt/archives/*
+    util-linux
 
 # Copy binary from builder
 COPY --from=builder /build/truenas-csi /usr/local/bin/truenas-csi

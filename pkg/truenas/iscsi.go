@@ -7,11 +7,11 @@ import (
 
 // ISCSITarget represents an iSCSI target from the TrueNAS API.
 type ISCSITarget struct {
-	ID     int                  `json:"id"`
-	Name   string               `json:"name"`
-	Alias  string               `json:"alias"`
-	Mode   string               `json:"mode"`
-	Groups []ISCSITargetGroup   `json:"groups"`
+	ID     int                `json:"id"`
+	Name   string             `json:"name"`
+	Alias  string             `json:"alias"`
+	Mode   string             `json:"mode"`
+	Groups []ISCSITargetGroup `json:"groups"`
 }
 
 // ISCSITargetGroup represents a portal/initiator group for a target.
@@ -51,10 +51,10 @@ type ISCSITargetExtent struct {
 
 // ISCSIGlobalConfig represents the global iSCSI configuration.
 type ISCSIGlobalConfig struct {
-	ID       int    `json:"id"`
-	Basename string `json:"basename"`
-	ISNSIP   string `json:"isns_servers"`
-	PoolAvailThreshold int `json:"pool_avail_threshold"`
+	ID                 int    `json:"id"`
+	Basename           string `json:"basename"`
+	ISNSIP             string `json:"isns_servers"`
+	PoolAvailThreshold int    `json:"pool_avail_threshold"`
 }
 
 // ISCSITargetCreate creates a new iSCSI target.
@@ -82,7 +82,7 @@ func (c *Client) ISCSITargetDelete(id int, force bool) error {
 	_, err := c.Call("iscsi.target.delete", id, force)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete iSCSI target: %w", err)
@@ -153,7 +153,7 @@ func (c *Client) ISCSIExtentDelete(id int, remove bool, force bool) error {
 	_, err := c.Call("iscsi.extent.delete", id, remove, force)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete iSCSI extent: %w", err)
@@ -219,7 +219,7 @@ func (c *Client) ISCSITargetExtentDelete(id int, force bool) error {
 	_, err := c.Call("iscsi.targetextent.delete", id, force)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete target-extent association: %w", err)

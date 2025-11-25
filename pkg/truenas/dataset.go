@@ -7,19 +7,19 @@ import (
 
 // Dataset represents a ZFS dataset from the TrueNAS API.
 type Dataset struct {
-	ID             string                 `json:"id"`
-	Name           string                 `json:"name"`
-	Pool           string                 `json:"pool"`
-	Type           string                 `json:"type"`
-	Mountpoint     string                 `json:"mountpoint"`
-	Used           DatasetProperty        `json:"used"`
-	Available      DatasetProperty        `json:"available"`
-	Quota          DatasetProperty        `json:"quota"`
-	Refquota       DatasetProperty        `json:"refquota"`
-	Reservation    DatasetProperty        `json:"reservation"`
-	Refreservation DatasetProperty        `json:"refreservation"`
-	Volsize        DatasetProperty        `json:"volsize"`
-	Volblocksize   DatasetProperty        `json:"volblocksize"`
+	ID             string                  `json:"id"`
+	Name           string                  `json:"name"`
+	Pool           string                  `json:"pool"`
+	Type           string                  `json:"type"`
+	Mountpoint     string                  `json:"mountpoint"`
+	Used           DatasetProperty         `json:"used"`
+	Available      DatasetProperty         `json:"available"`
+	Quota          DatasetProperty         `json:"quota"`
+	Refquota       DatasetProperty         `json:"refquota"`
+	Reservation    DatasetProperty         `json:"reservation"`
+	Refreservation DatasetProperty         `json:"refreservation"`
+	Volsize        DatasetProperty         `json:"volsize"`
+	Volblocksize   DatasetProperty         `json:"volblocksize"`
 	UserProperties map[string]UserProperty `json:"user_properties"`
 }
 
@@ -39,40 +39,40 @@ type UserProperty struct {
 
 // DatasetCreateParams holds parameters for creating a dataset.
 type DatasetCreateParams struct {
-	Name           string                 `json:"name"`
-	Type           string                 `json:"type,omitempty"`           // FILESYSTEM or VOLUME
-	Volsize        int64                  `json:"volsize,omitempty"`        // For volumes
-	Volblocksize   string                 `json:"volblocksize,omitempty"`   // For volumes
-	Sparse         bool                   `json:"sparse,omitempty"`         // For volumes
-	Quota          int64                  `json:"quota,omitempty"`          // For filesystems
-	Refquota       int64                  `json:"refquota,omitempty"`       // For filesystems
-	Reservation    int64                  `json:"reservation,omitempty"`
-	Refreservation int64                  `json:"refreservation,omitempty"`
-	Comments       string                 `json:"comments,omitempty"`
-	Readonly       string                 `json:"readonly,omitempty"`       // ON, OFF, INHERIT
-	Atime          string                 `json:"atime,omitempty"`
-	Exec           string                 `json:"exec,omitempty"`
-	Sync           string                 `json:"sync,omitempty"`
-	Compression    string                 `json:"compression,omitempty"`
-	Deduplication  string                 `json:"deduplication,omitempty"`
-	Copies         int                    `json:"copies,omitempty"`
-	Recordsize     string                 `json:"recordsize,omitempty"`
-	Casesensitivity string               `json:"casesensitivity,omitempty"`
-	Aclmode        string                 `json:"aclmode,omitempty"`
-	Acltype        string                 `json:"acltype,omitempty"`
-	ShareType      string                 `json:"share_type,omitempty"`
-	Xattr          string                 `json:"xattr,omitempty"`
+	Name            string `json:"name"`
+	Type            string `json:"type,omitempty"`         // FILESYSTEM or VOLUME
+	Volsize         int64  `json:"volsize,omitempty"`      // For volumes
+	Volblocksize    string `json:"volblocksize,omitempty"` // For volumes
+	Sparse          bool   `json:"sparse,omitempty"`       // For volumes
+	Quota           int64  `json:"quota,omitempty"`        // For filesystems
+	Refquota        int64  `json:"refquota,omitempty"`     // For filesystems
+	Reservation     int64  `json:"reservation,omitempty"`
+	Refreservation  int64  `json:"refreservation,omitempty"`
+	Comments        string `json:"comments,omitempty"`
+	Readonly        string `json:"readonly,omitempty"` // ON, OFF, INHERIT
+	Atime           string `json:"atime,omitempty"`
+	Exec            string `json:"exec,omitempty"`
+	Sync            string `json:"sync,omitempty"`
+	Compression     string `json:"compression,omitempty"`
+	Deduplication   string `json:"deduplication,omitempty"`
+	Copies          int    `json:"copies,omitempty"`
+	Recordsize      string `json:"recordsize,omitempty"`
+	Casesensitivity string `json:"casesensitivity,omitempty"`
+	Aclmode         string `json:"aclmode,omitempty"`
+	Acltype         string `json:"acltype,omitempty"`
+	ShareType       string `json:"share_type,omitempty"`
+	Xattr           string `json:"xattr,omitempty"`
 }
 
 // DatasetUpdateParams holds parameters for updating a dataset.
 type DatasetUpdateParams struct {
-	Volsize              int64               `json:"volsize,omitempty"`
-	Quota                interface{}         `json:"quota,omitempty"`
-	Refquota             interface{}         `json:"refquota,omitempty"`
-	Reservation          interface{}         `json:"reservation,omitempty"`
-	Refreservation       interface{}         `json:"refreservation,omitempty"`
-	Comments             string              `json:"comments,omitempty"`
-	Readonly             string              `json:"readonly,omitempty"`
+	Volsize              int64                `json:"volsize,omitempty"`
+	Quota                interface{}          `json:"quota,omitempty"`
+	Refquota             interface{}          `json:"refquota,omitempty"`
+	Reservation          interface{}          `json:"reservation,omitempty"`
+	Refreservation       interface{}          `json:"refreservation,omitempty"`
+	Comments             string               `json:"comments,omitempty"`
+	Readonly             string               `json:"readonly,omitempty"`
 	UserPropertiesUpdate []UserPropertyUpdate `json:"user_properties_update,omitempty"`
 }
 
@@ -87,9 +87,8 @@ type UserPropertyUpdate struct {
 func (c *Client) DatasetCreate(params *DatasetCreateParams) (*Dataset, error) {
 	result, err := c.Call("pool.dataset.create", params)
 	if err != nil {
-		// Ignore "already exists" errors
-		if strings.Contains(err.Error(), "already exists") {
-			// Get the existing dataset
+		// Handle "already exists" errors by returning existing dataset (idempotency)
+		if IsAlreadyExistsError(err) {
 			return c.DatasetGet(params.Name)
 		}
 		return nil, fmt.Errorf("failed to create dataset: %w", err)
@@ -107,9 +106,8 @@ func (c *Client) DatasetDelete(name string, recursive bool, force bool) error {
 
 	_, err := c.Call("pool.dataset.delete", name, options)
 	if err != nil {
-		// Ignore "does not exist" errors
-		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+		// Handle "not found" errors as success (idempotency)
+		if IsNotFoundError(err) {
 			return nil
 		}
 		return fmt.Errorf("failed to delete dataset: %w", err)

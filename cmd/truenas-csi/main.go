@@ -22,12 +22,12 @@ var (
 func main() {
 	// Define flags
 	var (
-		configFile     string
-		endpoint       string
-		nodeID         string
-		driverName     string
-		mode           string
-		showVersion    bool
+		configFile  string
+		endpoint    string
+		nodeID      string
+		driverName  string
+		mode        string
+		showVersion bool
 	)
 
 	flag.StringVar(&configFile, "config", "", "Path to driver configuration file (required)")

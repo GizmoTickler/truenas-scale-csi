@@ -1,8 +1,6 @@
 module github.com/GizmoTickler/truenas-scale-csi
 
-go 1.23.0
-
-toolchain go1.24.7
+go 1.25.4
 
 require (
 	github.com/container-storage-interface/spec v1.12.0

@@ -227,40 +227,44 @@ TrueNAS API endpoint (`wss://host/api/current`).
 
 ### Helm Installation
 
+The Helm chart is published as an OCI artifact to GitHub Container Registry.
+
 ```bash
-# Add the helm repository
-helm repo add truenas-csi https://gizmotickler.github.io/truenas-scale-csi/
-helm repo update
+# Login to ghcr.io (optional, only needed for private repos)
+# helm registry login ghcr.io -u <username>
 
-# Search for available charts
-helm search repo truenas-csi/
-
-# Copy and edit the appropriate values file from examples/
-# - examples/truenas-nfs.yaml
-# - examples/truenas-iscsi.yaml
-# - examples/truenas-nvmeof.yaml
-
-# Install NFS driver
-helm upgrade --install \
-  --values truenas-nfs.yaml \
+# Pull and install NFS driver
+helm install truenas-nfs \
+  oci://ghcr.io/gizmotickler/charts/truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
-  truenas-nfs truenas-csi/truenas-scale-csi
+  --values truenas-nfs.yaml
 
-# Install iSCSI driver
-helm upgrade --install \
-  --values truenas-iscsi.yaml \
+# Pull and install iSCSI driver
+helm install truenas-iscsi \
+  oci://ghcr.io/gizmotickler/charts/truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
-  truenas-iscsi truenas-csi/truenas-scale-csi
+  --values truenas-iscsi.yaml
 
-# Install NVMe-oF driver
-helm upgrade --install \
-  --values truenas-nvmeof.yaml \
+# Pull and install NVMe-oF driver
+helm install truenas-nvmeof \
+  oci://ghcr.io/gizmotickler/charts/truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
-  truenas-nvmeof truenas-csi/truenas-scale-csi
+  --values truenas-nvmeof.yaml
+
+# To see available versions
+helm show all oci://ghcr.io/gizmotickler/charts/truenas-csi
+
+# To pull a specific version
+helm pull oci://ghcr.io/gizmotickler/charts/truenas-csi --version 4.0.0
 ```
+
+Copy and edit the appropriate values file from `examples/`:
+- `examples/truenas-nfs.yaml`
+- `examples/truenas-iscsi.yaml`
+- `examples/truenas-nvmeof.yaml`
 
 ### Non-Standard Kubelet Paths
 
@@ -268,12 +272,12 @@ Some distributions use non-standard kubelet paths:
 
 ```bash
 # microk8s example
-helm upgrade --install \
-  --values truenas-nfs.yaml \
-  --set node.kubeletHostPath="/var/snap/microk8s/common/var/lib/kubelet" \
+helm install truenas-nfs \
+  oci://ghcr.io/gizmotickler/charts/truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
-  truenas-nfs truenas-csi/truenas-scale-csi
+  --values truenas-nfs.yaml \
+  --set node.kubeletHostPath="/var/snap/microk8s/common/var/lib/kubelet"
 ```
 
 Common non-standard kubelet paths:

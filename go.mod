@@ -7,9 +7,10 @@ toolchain go1.24.7
 require (
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.12.0
 	google.golang.org/grpc v1.62.1
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/klog/v2 v2.120.1
 )
@@ -21,7 +22,6 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect

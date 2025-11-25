@@ -14,14 +14,23 @@ case ${NVME_HOST_STRATEGY} in
     ;;
 
   nsenter)
-    # Find nvme-related process to get host namespace
-    # Use -x -o for busybox pgrep compatibility (not --exact --oldest)
-    nvme_pid=$(pgrep -x -o nvme-cli 2>/dev/null || pgrep -f nvme 2>/dev/null | head -1)
+    # Find nvme-related process by scanning /host/proc (since regular pgrep only sees container processes)
+    nvme_pid=""
+    for pid_dir in /host/proc/[0-9]*; do
+      pid=$(basename "${pid_dir}")
+      if [[ -f "${pid_dir}/comm" ]]; then
+        comm=$(cat "${pid_dir}/comm" 2>/dev/null)
+        if [[ "${comm}" == "nvme-cli" ]] || [[ "${comm}" == "nvme" ]]; then
+          nvme_pid="${pid}"
+          break
+        fi
+      fi
+    done
     if [[ "${nvme_pid}x" == "x" ]]; then
       # Fallback to chroot if no nvme process found
       chroot /host ${NVME_HOST_PATH} "${@:1}"
     else
-      nsenter --mount="/proc/${nvme_pid}/ns/mnt" --net="/proc/${nvme_pid}/ns/net" -- ${NVME_HOST_PATH} "${@:1}"
+      nsenter --mount="/host/proc/${nvme_pid}/ns/mnt" --net="/host/proc/${nvme_pid}/ns/net" -- ${NVME_HOST_PATH} "${@:1}"
     fi
     ;;
 

@@ -1,3 +1,13 @@
+# v2.2.4
+
+Release 2025-11-25
+
+**Bug Fixes:**
+- Fixed iscsid/nvme process discovery to scan /host/proc instead of using pgrep
+  - Container pgrep only sees container processes, not host processes
+  - Now directly scans /host/proc to find host iscsid/nvme PIDs for nsenter
+  - Fixes "failed to find iscsid pid for nsenter" error
+
 # v2.2.3
 
 Release 2025-11-25

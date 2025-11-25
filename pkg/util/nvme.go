@@ -16,10 +16,10 @@ import (
 
 // NVMeSubsystem represents an NVMe subsystem.
 type NVMeSubsystem struct {
-	NQN        string            `json:"NQN"`
-	Name       string            `json:"Name"`
-	Paths      []NVMePath        `json:"Paths"`
-	Namespaces []NVMeNamespace   `json:"Namespaces"`
+	NQN        string          `json:"NQN"`
+	Name       string          `json:"Name"`
+	Paths      []NVMePath      `json:"Paths"`
+	Namespaces []NVMeNamespace `json:"Namespaces"`
 }
 
 // NVMePath represents a path to an NVMe subsystem.
@@ -32,12 +32,12 @@ type NVMePath struct {
 
 // NVMeNamespace represents an NVMe namespace.
 type NVMeNamespace struct {
-	NameSpace   int    `json:"NameSpace"`
-	NSID        int    `json:"NSID"`
-	UsedBytes   int64  `json:"UsedBytes"`
-	MaximumLBA  int64  `json:"MaximumLBA"`
+	NameSpace    int   `json:"NameSpace"`
+	NSID         int   `json:"NSID"`
+	UsedBytes    int64 `json:"UsedBytes"`
+	MaximumLBA   int64 `json:"MaximumLBA"`
 	PhysicalSize int64 `json:"PhysicalSize"`
-	SectorSize  int    `json:"SectorSize"`
+	SectorSize   int   `json:"SectorSize"`
 }
 
 // NVMeoFConnect connects to an NVMe-oF target and returns the device path.
@@ -243,8 +243,8 @@ func findNVMeDeviceFromList(nqn string) (string, error) {
 
 	var result struct {
 		Devices []struct {
-			DevicePath    string `json:"DevicePath"`
-			SubsystemNQN  string `json:"SubsystemNQN"`
+			DevicePath   string `json:"DevicePath"`
+			SubsystemNQN string `json:"SubsystemNQN"`
 		} `json:"Devices"`
 	}
 	if err := json.Unmarshal(output, &result); err != nil {

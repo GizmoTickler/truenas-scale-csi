@@ -77,6 +77,9 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 	if stagingPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "staging target path is required")
 	}
+	if volumeContext == nil {
+		return nil, status.Error(codes.InvalidArgument, "volume context is required")
+	}
 
 	klog.Infof("NodeStageVolume: volumeID=%s, stagingPath=%s", volumeID, stagingPath)
 
@@ -351,11 +354,14 @@ func (d *Driver) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolume
 
 // stageNFSVolume mounts an NFS volume to the staging path.
 func (d *Driver) stageNFSVolume(ctx context.Context, volumeContext map[string]string, stagingPath string) error {
+	if volumeContext == nil {
+		return status.Error(codes.InvalidArgument, "volume context is required for NFS staging")
+	}
 	server := volumeContext["server"]
 	share := volumeContext["share"]
 
 	if server == "" || share == "" {
-		return status.Error(codes.InvalidArgument, "NFS server and share are required")
+		return status.Error(codes.InvalidArgument, "NFS server and share are required in volume context")
 	}
 
 	source := fmt.Sprintf("%s:%s", server, share)
@@ -380,12 +386,15 @@ func (d *Driver) stageNFSVolume(ctx context.Context, volumeContext map[string]st
 
 // stageISCSIVolume connects and mounts an iSCSI volume to the staging path.
 func (d *Driver) stageISCSIVolume(ctx context.Context, volumeContext map[string]string, stagingPath string, volCap *csi.VolumeCapability) error {
+	if volumeContext == nil {
+		return status.Error(codes.InvalidArgument, "volume context is required for iSCSI staging")
+	}
 	portal := volumeContext["portal"]
 	iqn := volumeContext["iqn"]
 	lunStr := volumeContext["lun"]
 
 	if portal == "" || iqn == "" {
-		return status.Error(codes.InvalidArgument, "iSCSI portal and IQN are required")
+		return status.Error(codes.InvalidArgument, "iSCSI portal and IQN are required in volume context")
 	}
 
 	// Parse LUN number
@@ -428,13 +437,16 @@ func (d *Driver) stageISCSIVolume(ctx context.Context, volumeContext map[string]
 
 // stageNVMeoFVolume connects and mounts an NVMe-oF volume to the staging path.
 func (d *Driver) stageNVMeoFVolume(ctx context.Context, volumeContext map[string]string, stagingPath string, volCap *csi.VolumeCapability) error {
+	if volumeContext == nil {
+		return status.Error(codes.InvalidArgument, "volume context is required for NVMe-oF staging")
+	}
 	nqn := volumeContext["nqn"]
 	transport := volumeContext["transport"]
 	address := volumeContext["address"]
 	port := volumeContext["port"]
 
 	if nqn == "" || address == "" {
-		return status.Error(codes.InvalidArgument, "NVMe-oF NQN and address are required")
+		return status.Error(codes.InvalidArgument, "NVMe-oF NQN and address are required in volume context")
 	}
 
 	if transport == "" {

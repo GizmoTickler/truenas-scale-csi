@@ -48,6 +48,12 @@ type TrueNASConfig struct {
 
 	// AllowInsecure skips TLS verification
 	AllowInsecure bool `yaml:"allowInsecure"`
+
+	// RequestTimeout is the timeout for API requests in seconds (default: 60)
+	RequestTimeout int `yaml:"requestTimeout"`
+
+	// ConnectTimeout is the timeout for establishing connections in seconds (default: 10)
+	ConnectTimeout int `yaml:"connectTimeout"`
 }
 
 // ZFSConfig holds ZFS dataset configuration.
@@ -202,6 +208,12 @@ func LoadConfig(path string) (*Config, error) {
 			cfg.TrueNAS.Port = 80
 		}
 	}
+	if cfg.TrueNAS.RequestTimeout == 0 {
+		cfg.TrueNAS.RequestTimeout = 60
+	}
+	if cfg.TrueNAS.ConnectTimeout == 0 {
+		cfg.TrueNAS.ConnectTimeout = 10
+	}
 	if cfg.ZFS.ZvolBlocksize == "" {
 		cfg.ZFS.ZvolBlocksize = "16K"
 	}
@@ -230,6 +242,23 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.ZFS.DatasetParentName == "" {
 		return nil, fmt.Errorf("zfs.datasetParentName is required")
+	}
+
+	// Validate protocol-specific settings based on driver type
+	shareType := cfg.GetDriverShareType()
+	switch shareType {
+	case "nfs":
+		if cfg.NFS.ShareHost == "" {
+			return nil, fmt.Errorf("nfs.shareHost is required for NFS driver")
+		}
+	case "iscsi":
+		if cfg.ISCSI.TargetPortal == "" {
+			return nil, fmt.Errorf("iscsi.targetPortal is required for iSCSI driver")
+		}
+	case "nvmeof":
+		if cfg.NVMeoF.TransportAddress == "" {
+			return nil, fmt.Errorf("nvmeof.transportAddress is required for NVMe-oF driver")
+		}
 	}
 
 	return cfg, nil

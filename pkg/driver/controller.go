@@ -16,6 +16,8 @@ import (
 	"github.com/GizmoTickler/truenas-scale-csi/pkg/truenas"
 )
 
+// Import truenas package for error helper functions (aliased for clarity in error checks)
+
 // ZFS property names for tracking CSI resources
 const (
 	PropManagedResource           = "truenas-csi:managed_resource"
@@ -226,13 +228,26 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
 
-	// Delete share first
-	if err := d.deleteShare(ctx, datasetName); err != nil {
-		klog.Warningf("Failed to delete share for %s: %v", volumeID, err)
+	// Check if volume exists (idempotency - return success if already deleted)
+	_, err := d.truenasClient.DatasetGet(datasetName)
+	if err != nil {
+		if truenas.IsNotFoundError(err) {
+			klog.Infof("Volume %s already deleted or does not exist", volumeID)
+			return &csi.DeleteVolumeResponse{}, nil
+		}
+		// Log but don't fail - try to proceed with deletion anyway
+		klog.V(4).Infof("Could not verify volume existence: %v", err)
 	}
 
-	// Delete dataset
+	// Delete share first (errors are non-fatal, log and continue)
+	if err := d.deleteShare(ctx, datasetName); err != nil {
+		klog.Warningf("Failed to delete share for volume %s: %v", volumeID, err)
+	}
+
+	// Delete dataset (recursive to handle snapshots, force to ignore busy state)
 	if err := d.truenasClient.DatasetDelete(datasetName, true, true); err != nil {
+		// DatasetDelete already handles "not found" errors, so this is a real error
+		klog.Errorf("Failed to delete dataset for volume %s: %v", volumeID, err)
 		return nil, status.Errorf(codes.Internal, "failed to delete volume: %v", err)
 	}
 
@@ -402,20 +417,37 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	// Snapshot ID format: dataset@snapshotname
 	snapshots, err := d.truenasClient.SnapshotListAll(d.config.ZFS.DatasetParentName)
 	if err != nil {
+		// If we can't list snapshots due to connection issue, return error
+		// If parent dataset doesn't exist, the snapshot is effectively deleted
+		if truenas.IsNotFoundError(err) {
+			klog.Infof("Snapshot %s parent not found, treating as deleted", snapshotID)
+			return &csi.DeleteSnapshotResponse{}, nil
+		}
 		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
 	}
 
+	found := false
 	for _, snap := range snapshots {
 		snapName := path.Base(strings.Split(snap.ID, "@")[1])
 		if snapName == snapshotID {
+			found = true
 			if err := d.truenasClient.SnapshotDelete(snap.ID, false, false); err != nil {
+				// Handle "not found" as success (idempotency)
+				if truenas.IsNotFoundError(err) {
+					klog.Infof("Snapshot %s already deleted", snapshotID)
+					break
+				}
+				klog.Errorf("Failed to delete snapshot %s: %v", snapshotID, err)
 				return nil, status.Errorf(codes.Internal, "failed to delete snapshot: %v", err)
 			}
+			klog.Infof("Snapshot %s deleted successfully", snapshotID)
 			break
 		}
 	}
 
-	klog.Infof("Snapshot %s deleted successfully", snapshotID)
+	if !found {
+		klog.Infof("Snapshot %s not found, treating as already deleted", snapshotID)
+	}
 
 	return &csi.DeleteSnapshotResponse{}, nil
 }

@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
@@ -52,6 +54,9 @@ type Driver struct {
 
 	// Ready flag
 	ready bool
+
+	// Request counter for generating unique request IDs
+	requestCounter uint64
 }
 
 // NewDriver creates a new TrueNAS CSI driver instance.
@@ -71,11 +76,13 @@ func NewDriver(cfg *DriverConfig) (*Driver, error) {
 
 	// Create TrueNAS API client
 	truenasClient, err := truenas.NewClient(&truenas.ClientConfig{
-		Host:          cfg.Config.TrueNAS.Host,
-		Port:          cfg.Config.TrueNAS.Port,
-		Protocol:      cfg.Config.TrueNAS.Protocol,
-		APIKey:        cfg.Config.TrueNAS.APIKey,
-		AllowInsecure: cfg.Config.TrueNAS.AllowInsecure,
+		Host:           cfg.Config.TrueNAS.Host,
+		Port:           cfg.Config.TrueNAS.Port,
+		Protocol:       cfg.Config.TrueNAS.Protocol,
+		APIKey:         cfg.Config.TrueNAS.APIKey,
+		AllowInsecure:  cfg.Config.TrueNAS.AllowInsecure,
+		Timeout:        time.Duration(cfg.Config.TrueNAS.RequestTimeout) * time.Second,
+		ConnectTimeout: time.Duration(cfg.Config.TrueNAS.ConnectTimeout) * time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TrueNAS client: %w", err)
@@ -163,22 +170,58 @@ func (d *Driver) Stop() {
 	}
 }
 
-// logInterceptor is a gRPC interceptor for logging requests.
+// logInterceptor is a gRPC interceptor for logging requests with request IDs and timing.
 func (d *Driver) logInterceptor(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
-	klog.V(4).Infof("gRPC call: %s", info.FullMethod)
-	klog.V(5).Infof("gRPC request: %+v", req)
+	// Generate a unique request ID for tracing
+	requestID := atomic.AddUint64(&d.requestCounter, 1)
+	startTime := time.Now()
 
+	// Extract key identifiers from common request types for better logging
+	switch r := req.(type) {
+	case *csi.CreateVolumeRequest:
+		klog.Infof("[req-%d] %s name=%s", requestID, info.FullMethod, r.GetName())
+	case *csi.DeleteVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s", requestID, info.FullMethod, r.GetVolumeId())
+	case *csi.NodeStageVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s stagingPath=%s", requestID, info.FullMethod, r.GetVolumeId(), r.GetStagingTargetPath())
+	case *csi.NodeUnstageVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s", requestID, info.FullMethod, r.GetVolumeId())
+	case *csi.NodePublishVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s targetPath=%s", requestID, info.FullMethod, r.GetVolumeId(), r.GetTargetPath())
+	case *csi.NodeUnpublishVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s", requestID, info.FullMethod, r.GetVolumeId())
+	case *csi.CreateSnapshotRequest:
+		klog.Infof("[req-%d] %s name=%s sourceVolumeID=%s", requestID, info.FullMethod, r.GetName(), r.GetSourceVolumeId())
+	case *csi.DeleteSnapshotRequest:
+		klog.Infof("[req-%d] %s snapshotID=%s", requestID, info.FullMethod, r.GetSnapshotId())
+	case *csi.ControllerExpandVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s", requestID, info.FullMethod, r.GetVolumeId())
+	case *csi.NodeExpandVolumeRequest:
+		klog.Infof("[req-%d] %s volumeID=%s", requestID, info.FullMethod, r.GetVolumeId())
+	default:
+		klog.V(4).Infof("[req-%d] %s", requestID, info.FullMethod)
+	}
+
+	// Log full request at higher verbosity
+	klog.V(5).Infof("[req-%d] request: %+v", requestID, req)
+
+	// Handle the request
 	resp, err := handler(ctx, req)
 
+	// Calculate duration
+	duration := time.Since(startTime)
+
+	// Log result
 	if err != nil {
-		klog.Errorf("gRPC error: %s: %v", info.FullMethod, err)
+		klog.Errorf("[req-%d] %s failed after %v: %v", requestID, info.FullMethod, duration, err)
 	} else {
-		klog.V(5).Infof("gRPC response: %+v", resp)
+		klog.V(4).Infof("[req-%d] %s completed in %v", requestID, info.FullMethod, duration)
+		klog.V(5).Infof("[req-%d] response: %+v", requestID, resp)
 	}
 
 	return resp, err

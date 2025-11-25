@@ -13,12 +13,12 @@ import (
 
 // FilesystemStats holds filesystem statistics.
 type FilesystemStats struct {
-	TotalBytes     int64
-	AvailableBytes int64
-	UsedBytes      int64
-	TotalInodes    int64
+	TotalBytes      int64
+	AvailableBytes  int64
+	UsedBytes       int64
+	TotalInodes     int64
 	AvailableInodes int64
-	UsedInodes     int64
+	UsedInodes      int64
 }
 
 // IsMounted checks if a path is currently mounted.

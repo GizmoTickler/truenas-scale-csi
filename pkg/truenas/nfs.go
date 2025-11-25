@@ -46,7 +46,7 @@ func (c *Client) NFSShareCreate(params *NFSShareCreateParams) (*NFSShare, error)
 	if err != nil {
 		// Handle "already exports" error by finding existing share
 		if strings.Contains(err.Error(), "already exports") ||
-		   strings.Contains(err.Error(), "already shared") {
+			strings.Contains(err.Error(), "already shared") {
 			existing, findErr := c.NFSShareFindByPath(params.Path)
 			if findErr == nil && existing != nil {
 				return existing, nil
@@ -64,7 +64,7 @@ func (c *Client) NFSShareDelete(id int) error {
 	if err != nil {
 		// Ignore "does not exist" errors
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete NFS share: %w", err)

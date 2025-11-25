@@ -7,12 +7,12 @@ import (
 
 // NVMeoFSubsystem represents an NVMe-oF subsystem from the TrueNAS API.
 type NVMeoFSubsystem struct {
-	ID            int      `json:"id"`
-	NQN           string   `json:"nqn"`
-	Serial        string   `json:"serial"`
-	AllowAnyHost  bool     `json:"allow_any_host"`
-	Hosts         []string `json:"hosts"`
-	Namespaces    []int    `json:"namespaces"`
+	ID           int      `json:"id"`
+	NQN          string   `json:"nqn"`
+	Serial       string   `json:"serial"`
+	AllowAnyHost bool     `json:"allow_any_host"`
+	Hosts        []string `json:"hosts"`
+	Namespaces   []int    `json:"namespaces"`
 }
 
 // NVMeoFNamespace represents an NVMe-oF namespace from the TrueNAS API.
@@ -27,11 +27,11 @@ type NVMeoFNamespace struct {
 
 // NVMeoFPort represents an NVMe-oF port from the TrueNAS API.
 type NVMeoFPort struct {
-	ID        int      `json:"id"`
-	Transport string   `json:"transport"`
-	Address   string   `json:"addr_traddr"`
-	Port      int      `json:"addr_trsvcid"`
-	Subsystems []int   `json:"subsystems"`
+	ID         int    `json:"id"`
+	Transport  string `json:"transport"`
+	Address    string `json:"addr_traddr"`
+	Port       int    `json:"addr_trsvcid"`
+	Subsystems []int  `json:"subsystems"`
 }
 
 // NVMeoFSubsystemCreate creates a new NVMe-oF subsystem.
@@ -61,7 +61,7 @@ func (c *Client) NVMeoFSubsystemDelete(id int) error {
 	_, err := c.Call("nvmet.subsys.delete", id)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete NVMe-oF subsystem: %w", err)
@@ -125,7 +125,7 @@ func (c *Client) NVMeoFNamespaceDelete(id int) error {
 	_, err := c.Call("nvmet.namespace.delete", id)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete NVMe-oF namespace: %w", err)

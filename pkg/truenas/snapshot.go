@@ -53,7 +53,7 @@ func (c *Client) SnapshotDelete(snapshotID string, defer_ bool, recursive bool) 
 	if err != nil {
 		// Ignore "does not exist" errors
 		if strings.Contains(err.Error(), "does not exist") ||
-		   strings.Contains(err.Error(), "not found") {
+			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
 		return fmt.Errorf("failed to delete snapshot: %w", err)

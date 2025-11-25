@@ -206,7 +206,9 @@ func findISCSIDevice(iqn string, lun int) (string, error) {
 func findDeviceForSession(sessionName string, lun int) (string, error) {
 	// Extract session number
 	var sessionNum int
-	fmt.Sscanf(sessionName, "session%d", &sessionNum)
+	if _, err := fmt.Sscanf(sessionName, "session%d", &sessionNum); err != nil {
+		return "", fmt.Errorf("failed to parse session name: %w", err)
+	}
 
 	// Look for the device in /sys/class/scsi_device
 	// Format: host:bus:target:lun
@@ -224,7 +226,9 @@ func findDeviceForSession(sessionName string, lun int) (string, error) {
 		hostDir := filepath.Dir(filepath.Dir(hostDirs[0]))
 		hostName := filepath.Base(hostDir)
 		var hostNum int
-		fmt.Sscanf(hostName, "host%d", &hostNum)
+		if _, err := fmt.Sscanf(hostName, "host%d", &hostNum); err != nil {
+			return "", fmt.Errorf("failed to parse host name: %w", err)
+		}
 
 		// Look for device with this host
 		pattern = fmt.Sprintf("/sys/class/scsi_device/%d:0:0:%d/device/block/*", hostNum, lun)

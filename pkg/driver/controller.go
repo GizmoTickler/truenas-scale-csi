@@ -173,14 +173,22 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	// Create share (NFS, iSCSI, or NVMe-oF)
 	if err := d.createShare(ctx, datasetName, name); err != nil {
 		// Cleanup on failure
-		d.truenasClient.DatasetDelete(datasetName, false, false)
+		if delErr := d.truenasClient.DatasetDelete(datasetName, false, false); delErr != nil {
+			klog.Warningf("Failed to cleanup dataset after share creation failure: %v", delErr)
+		}
 		return nil, err
 	}
 
 	// Mark as managed and successful
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropManagedResource, "true")
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropProvisionSuccess, "true")
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropCSIVolumeName, name)
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropManagedResource, "true"); err != nil {
+		klog.Warningf("Failed to set managed resource property: %v", err)
+	}
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropProvisionSuccess, "true"); err != nil {
+		klog.Warningf("Failed to set provision success property: %v", err)
+	}
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropCSIVolumeName, name); err != nil {
+		klog.Warningf("Failed to set CSI volume name property: %v", err)
+	}
 
 	// Get volume context for response
 	volumeContext, err := d.getVolumeContext(datasetName)
@@ -351,9 +359,15 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	}
 
 	// Set snapshot properties
-	d.truenasClient.SnapshotSetUserProperty(snap.ID, PropManagedResource, "true")
-	d.truenasClient.SnapshotSetUserProperty(snap.ID, PropCSISnapshotName, name)
-	d.truenasClient.SnapshotSetUserProperty(snap.ID, PropCSISnapshotSourceVolumeID, sourceVolumeID)
+	if err := d.truenasClient.SnapshotSetUserProperty(snap.ID, PropManagedResource, "true"); err != nil {
+		klog.Warningf("Failed to set managed resource property on snapshot: %v", err)
+	}
+	if err := d.truenasClient.SnapshotSetUserProperty(snap.ID, PropCSISnapshotName, name); err != nil {
+		klog.Warningf("Failed to set CSI snapshot name property: %v", err)
+	}
+	if err := d.truenasClient.SnapshotSetUserProperty(snap.ID, PropCSISnapshotSourceVolumeID, sourceVolumeID); err != nil {
+		klog.Warningf("Failed to set CSI snapshot source volume ID property: %v", err)
+	}
 
 	klog.Infof("Snapshot %s created successfully", snapshotID)
 
@@ -627,8 +641,12 @@ func (d *Driver) handleVolumeContentSource(ctx context.Context, datasetName stri
 		}
 
 		// Set content source properties
-		d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceType, "snapshot")
-		d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceID, snapshotID)
+		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceType, "snapshot"); err != nil {
+			klog.Warningf("Failed to set volume content source type property: %v", err)
+		}
+		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceID, snapshotID); err != nil {
+			klog.Warningf("Failed to set volume content source ID property: %v", err)
+		}
 
 	} else if volume := source.GetVolume(); volume != nil {
 		// Clone from volume
@@ -643,13 +661,19 @@ func (d *Driver) handleVolumeContentSource(ctx context.Context, datasetName stri
 		}
 
 		if err := d.truenasClient.SnapshotClone(snap.ID, datasetName); err != nil {
-			d.truenasClient.SnapshotDelete(snap.ID, false, false)
+			if delErr := d.truenasClient.SnapshotDelete(snap.ID, false, false); delErr != nil {
+				klog.Warningf("Failed to cleanup snapshot after clone failure: %v", delErr)
+			}
 			return status.Errorf(codes.Internal, "failed to clone volume: %v", err)
 		}
 
 		// Set content source properties
-		d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceType, "volume")
-		d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceID, sourceVolumeID)
+		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceType, "volume"); err != nil {
+			klog.Warningf("Failed to set volume content source type property: %v", err)
+		}
+		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceID, sourceVolumeID); err != nil {
+			klog.Warningf("Failed to set volume content source ID property: %v", err)
+		}
 	}
 
 	return nil

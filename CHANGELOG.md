@@ -1,3 +1,14 @@
+# v2.2.2
+
+Release 2025-11-25
+
+**Bug Fixes:**
+- Fixed wrapper scripts for Talos Linux and minimal OS compatibility
+  - Changed default strategy to `nsenter` (works on Talos)
+  - Removed `/usr/bin/env` dependency from chroot commands
+  - Use direct binary paths (`/bin/mount`, `/usr/sbin/iscsiadm`)
+  - Fixes "can't execute '/usr/bin/env': No such file or directory" error
+
 # v2.2.1
 
 Release 2025-11-25

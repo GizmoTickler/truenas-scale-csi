@@ -228,7 +228,7 @@ sidecars:
         memory: 32Mi
 
   resizer:
-    image: registry.k8s.io/sig-storage/csi-resizer:v1.10.0
+    image: registry.k8s.io/sig-storage/csi-resizer:v1.14.0
     resources:
       limits:
         cpu: 100m

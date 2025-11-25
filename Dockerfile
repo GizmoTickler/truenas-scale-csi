@@ -15,7 +15,7 @@ ARG TARGETARCH
 ARG VERSION=dev
 ARG COMMIT=unknown
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
-    -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${COMMIT}" \
+    -ldflags="-w -s -X main.Version=${VERSION} -X main.GitCommit=${COMMIT}" \
     -o truenas-csi ./cmd/truenas-csi
 
 ######################
@@ -51,17 +51,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/cache/apt/archives/*
 
-# Create non-root user
-RUN useradd --create-home --uid 1000 csi
-
 # Copy binary from builder
 COPY --from=builder /build/truenas-csi /usr/local/bin/truenas-csi
 
+# Copy helper scripts for host command execution (iSCSI, mount operations)
+COPY docker/iscsiadm /usr/local/bin/iscsiadm-wrapper
+COPY docker/mount /usr/local/bin/mount-wrapper
+COPY docker/umount /usr/local/bin/umount-wrapper
+
 # Create directories for CSI socket and config
-RUN mkdir -p /csi /etc/truenas-csi && chown -R csi:csi /csi /etc/truenas-csi
+RUN mkdir -p /csi /etc/truenas-csi
 
 WORKDIR /
-
-EXPOSE 50051
 
 ENTRYPOINT ["/usr/local/bin/truenas-csi"]

@@ -3,13 +3,11 @@
 set -e
 set -x
 
-export PATH="/usr/local/lib/nodejs/bin:${PATH}"
+# Build TrueNAS CSI driver
 
-node --version
-npm --version
+go version
 
-# install deps
-npm i
+# Build the binary
+CGO_ENABLED=0 go build -o bin/truenas-csi ./cmd/truenas-csi
 
-# tar node_modules to keep the number of files low to upload
-tar -zcf node_modules-linux-amd64.tar.gz node_modules
+echo "Build complete: bin/truenas-csi"

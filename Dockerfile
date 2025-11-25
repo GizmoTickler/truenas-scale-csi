@@ -40,6 +40,7 @@ LABEL org.opencontainers.image.description="Kubernetes CSI driver for TrueNAS SC
 # because we use wrapper scripts to run commands on the host
 RUN apk add --no-cache \
     ca-certificates \
+    bash \
     nfs-utils \
     e2fsprogs \
     xfsprogs \

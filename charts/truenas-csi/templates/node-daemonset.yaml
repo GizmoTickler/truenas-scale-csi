@@ -43,45 +43,23 @@ spec:
           image: "{{ .Values.image.repository }}:{{ include "truenas-csi.imageTag" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
-            - "--endpoint=unix://{{ include "truenas-csi.socketPath" . }}"
-            - "--node-id=$(NODE_ID)"
-            - "--driver-name={{ .Values.csiDriverName }}"
-            - "--controller=false"
-            - "--node=true"
-            - "--v={{ .Values.logging.verbosity }}"
+            - "-endpoint=unix://{{ include "truenas-csi.socketPath" . }}"
+            - "-node-id=$(NODE_ID)"
+            - "-driver-name={{ .Values.csiDriverName }}"
+            - "-config=/etc/truenas-csi/config.yaml"
+            - "-mode=node"
+            - "-v={{ .Values.logging.verbosity }}"
           env:
             - name: NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: TRUENAS_HOST
-              value: {{ .Values.truenas.host | quote }}
-            - name: TRUENAS_PORT
-              value: {{ .Values.truenas.port | quote }}
-            - name: TRUENAS_SECURE
-              value: {{ .Values.truenas.secure | quote }}
-            - name: TRUENAS_SKIP_TLS_VERIFY
-              value: {{ .Values.truenas.skipTLSVerify | quote }}
             {{- if or .Values.truenas.apiKey .Values.truenas.existingSecret }}
             - name: TRUENAS_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "truenas-csi.secretName" . }}
                   key: api-key
-                  optional: true
-            {{- end }}
-            {{- if or .Values.truenas.username .Values.truenas.existingSecret }}
-            - name: TRUENAS_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "truenas-csi.secretName" . }}
-                  key: username
-                  optional: true
-            - name: TRUENAS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "truenas-csi.secretName" . }}
-                  key: password
                   optional: true
             {{- end }}
             {{- with .Values.node.extraEnv }}
@@ -92,6 +70,9 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: {{ include "truenas-csi.socketDir" . }}
+            - name: config
+              mountPath: /etc/truenas-csi
+              readOnly: true
             - name: kubelet-dir
               mountPath: {{ include "truenas-csi.kubeletDir" . }}
               mountPropagation: Bidirectional
@@ -156,6 +137,9 @@ spec:
           hostPath:
             path: {{ include "truenas-csi.kubeletDir" . }}/plugins/{{ .Values.csiDriverName }}
             type: DirectoryOrCreate
+        - name: config
+          configMap:
+            name: {{ include "truenas-csi.fullname" . }}-config
         - name: registration-dir
           hostPath:
             path: {{ include "truenas-csi.kubeletDir" . }}/plugins_registry

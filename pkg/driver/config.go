@@ -271,6 +271,7 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 // GetDriverShareType returns the share type based on driver name.
+// Deprecated: Use GetShareType with StorageClass parameters instead.
 func (c *Config) GetDriverShareType() string {
 	switch c.DriverName {
 	case "org.truenas.csi.nfs", "truenas-nfs":
@@ -285,9 +286,35 @@ func (c *Config) GetDriverShareType() string {
 	}
 }
 
+// GetShareType returns the share type from StorageClass parameters,
+// falling back to driver name if not specified in parameters.
+// The "protocol" parameter in StorageClass takes precedence.
+func (c *Config) GetShareType(params map[string]string) string {
+	// Check StorageClass parameter first
+	if params != nil {
+		if protocol, ok := params["protocol"]; ok {
+			switch protocol {
+			case "nfs":
+				return "nfs"
+			case "iscsi":
+				return "iscsi"
+			case "nvmeof":
+				return "nvmeof"
+			}
+		}
+	}
+	// Fall back to driver name-based detection
+	return c.GetDriverShareType()
+}
+
 // GetZFSResourceType returns the ZFS resource type for this driver.
 func (c *Config) GetZFSResourceType() string {
-	switch c.GetDriverShareType() {
+	return c.GetZFSResourceTypeForShare(c.GetDriverShareType())
+}
+
+// GetZFSResourceTypeForShare returns the ZFS resource type for a given share type.
+func (c *Config) GetZFSResourceTypeForShare(shareType string) string {
+	switch shareType {
 	case "nfs":
 		return "filesystem"
 	case "iscsi", "nvmeof":

@@ -13,9 +13,8 @@ import (
 )
 
 // createShare creates the appropriate share type (NFS, iSCSI, or NVMe-oF) for a dataset.
-func (d *Driver) createShare(ctx context.Context, datasetName string, volumeName string) error {
-	shareType := d.config.GetDriverShareType()
-
+// shareType should be obtained from config.GetShareType(params) to support StorageClass parameters.
+func (d *Driver) createShare(ctx context.Context, datasetName string, volumeName string, shareType string) error {
 	klog.Infof("Creating %s share for dataset: %s", shareType, datasetName)
 
 	switch shareType {
@@ -31,9 +30,8 @@ func (d *Driver) createShare(ctx context.Context, datasetName string, volumeName
 }
 
 // deleteShare deletes the share for a dataset.
-func (d *Driver) deleteShare(ctx context.Context, datasetName string) error {
-	shareType := d.config.GetDriverShareType()
-
+// shareType should be obtained from config.GetShareType(params) or stored metadata.
+func (d *Driver) deleteShare(ctx context.Context, datasetName string, shareType string) error {
 	klog.Infof("Deleting %s share for dataset: %s", shareType, datasetName)
 
 	switch shareType {

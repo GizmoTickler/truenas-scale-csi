@@ -141,6 +141,11 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	volumeID := d.sanitizeVolumeID(name)
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
 
+	// Get share type from StorageClass parameters (with fallback to driver name)
+	params := req.GetParameters()
+	shareType := d.config.GetShareType(params)
+	klog.Infof("CreateVolume: using share type %s for volume %s", shareType, volumeID)
+
 	// Check if volume already exists
 	existingDS, err := d.truenasClient.DatasetGet(datasetName)
 	if err == nil && existingDS != nil {
@@ -173,7 +178,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			return nil, status.Errorf(codes.Internal, "failed to ensure volume properties: %v", err)
 		}
 
-		volumeContext, err := d.getVolumeContext(datasetName)
+		volumeContext, err := d.getVolumeContext(datasetName, shareType)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get volume context: %v", err)
 		}
@@ -195,13 +200,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 		}
 	} else {
 		// Create new dataset
-		if err := d.createDataset(ctx, datasetName, capacityBytes); err != nil {
+		if err := d.createDataset(ctx, datasetName, capacityBytes, shareType); err != nil {
 			return nil, err
 		}
 	}
 
 	// Create share (NFS, iSCSI, or NVMe-oF)
-	if err := d.createShare(ctx, datasetName, name); err != nil {
+	if err := d.createShare(ctx, datasetName, name, shareType); err != nil {
 		// Cleanup on failure
 		if delErr := d.truenasClient.DatasetDelete(datasetName, false, false); delErr != nil {
 			klog.Warningf("Failed to cleanup dataset after share creation failure: %v", delErr)
@@ -237,7 +242,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	// Get volume context for response
-	volumeContext, err := d.getVolumeContext(datasetName)
+	volumeContext, err := d.getVolumeContext(datasetName, shareType)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get volume context: %v", err)
 	}
@@ -273,7 +278,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
 
 	// Check if volume exists (idempotency - return success if already deleted)
-	_, err := d.truenasClient.DatasetGet(datasetName)
+	ds, err := d.truenasClient.DatasetGet(datasetName)
 	if err != nil {
 		if truenas.IsNotFoundError(err) {
 			klog.Infof("Volume %s already deleted or does not exist", volumeID)
@@ -283,8 +288,25 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		klog.V(4).Infof("Could not verify volume existence: %v", err)
 	}
 
+	// Determine share type from dataset type
+	// Filesystem = NFS, Volume (zvol) = iSCSI or NVMe-oF
+	shareType := d.config.GetDriverShareType() // fallback to driver name
+	if ds != nil {
+		switch ds.Type {
+		case "FILESYSTEM":
+			shareType = "nfs"
+		case "VOLUME":
+			// For zvol, prefer iSCSI unless driver specifically configured for NVMe-oF
+			if d.config.GetDriverShareType() == "nvmeof" {
+				shareType = "nvmeof"
+			} else {
+				shareType = "iscsi"
+			}
+		}
+	}
+
 	// Delete share first (errors are non-fatal, log and continue)
-	if err := d.deleteShare(ctx, datasetName); err != nil {
+	if err := d.deleteShare(ctx, datasetName, shareType); err != nil {
 		klog.Warningf("Failed to delete share for volume %s: %v", volumeID, err)
 	}
 
@@ -675,9 +697,7 @@ func (d *Driver) getDatasetCapacity(ds *truenas.Dataset) int64 {
 	return 0
 }
 
-func (d *Driver) createDataset(ctx context.Context, datasetName string, capacityBytes int64) error {
-	shareType := d.config.GetDriverShareType()
-
+func (d *Driver) createDataset(ctx context.Context, datasetName string, capacityBytes int64, shareType string) error {
 	params := &truenas.DatasetCreateParams{
 		Name: datasetName,
 	}
@@ -786,9 +806,7 @@ func (d *Driver) handleVolumeContentSource(ctx context.Context, datasetName stri
 	return nil
 }
 
-func (d *Driver) getVolumeContext(datasetName string) (map[string]string, error) {
-	shareType := d.config.GetDriverShareType()
-
+func (d *Driver) getVolumeContext(datasetName string, shareType string) (map[string]string, error) {
 	context := map[string]string{
 		"node_attach_driver": shareType,
 	}

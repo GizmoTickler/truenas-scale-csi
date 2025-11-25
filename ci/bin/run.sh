@@ -4,19 +4,14 @@ set -e
 set -x
 
 _term() {
-  # no idea why this does not work
-  #[[ -n "${SUDO_PID}" ]] && sudo kill -15 "${SUDO_PID}"
   [[ -n "${SUDO_PID}" ]] && sudo kill -15 $(pgrep -P "${SUDO_PID}") || true
 }
 
 trap _term EXIT
 
-export PATH="/usr/local/lib/nodejs/bin:${PATH}"
-# install deps
-#npm i
-# install from artifacts
-if [[ -f "node_modules-linux-amd64.tar.gz" && ! -d "node_modules" ]];then
-  tar -zxf node_modules-linux-amd64.tar.gz
+# Build if needed
+if [[ ! -f "bin/truenas-csi" ]]; then
+  ci/bin/build.sh
 fi
 
 # generate key for paths etc
@@ -25,9 +20,6 @@ export CI_BUILD_KEY=$(uuidgen | cut -d "-" -f 1)
 # launch the server
 sudo -E ci/bin/launch-server.sh &
 SUDO_PID=$!
-
-# wait for server to launch
-#sleep 10
 
 : ${CSI_ENDPOINT:=/tmp/csi-${CI_BUILD_KEY}.sock}
 iter=0

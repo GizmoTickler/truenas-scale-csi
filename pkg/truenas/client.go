@@ -2,11 +2,13 @@
 package truenas
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -72,17 +74,47 @@ type ClientConfig struct {
 	ConnectTimeout time.Duration
 	MaxRetries     int           // Maximum number of connection retries (default: 3)
 	RetryInterval  time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
+	HeartbeatInterval time.Duration // Interval for WebSocket heartbeat (default: 30s)
 }
+
+// writeRequest represents a request to be written to the WebSocket.
+type writeRequest struct {
+	data     interface{}
+	resultCh chan error
+}
+
+// connectionState represents the current state of the connection.
+type connectionState int32
+
+const (
+	stateDisconnected connectionState = iota
+	stateConnecting
+	stateConnected
+)
 
 // Client is a TrueNAS API client using WebSocket JSON-RPC 2.0.
 type Client struct {
 	config        *ClientConfig
 	conn          *websocket.Conn
-	mu            sync.Mutex
+	mu            sync.RWMutex
 	messageID     int64
 	pending       map[int64]chan *rpcResponse
+	pendingMu     sync.RWMutex // Separate lock for pending map to reduce contention
 	authenticated bool
 	closed        bool
+
+	// Connection state management (fixes thundering herd)
+	connState     int32 // atomic connectionState
+	connCond      *sync.Cond
+	connMu        sync.Mutex
+
+	// Write loop channel (fixes API client locking)
+	writeCh       chan writeRequest
+	writeLoopDone chan struct{}
+
+	// Heartbeat management (fixes silent disconnects)
+	heartbeatDone chan struct{}
+	lastPong      int64 // atomic unix timestamp
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.
@@ -128,6 +160,9 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	if cfg.RetryInterval == 0 {
 		cfg.RetryInterval = 1 * time.Second
 	}
+	if cfg.HeartbeatInterval == 0 {
+		cfg.HeartbeatInterval = 30 * time.Second
+	}
 	if cfg.Protocol == "" {
 		cfg.Protocol = "https"
 	}
@@ -140,9 +175,13 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		config:  cfg,
-		pending: make(map[int64]chan *rpcResponse),
+		config:        cfg,
+		pending:       make(map[int64]chan *rpcResponse),
+		writeCh:       make(chan writeRequest, 100), // Buffered channel for write requests
+		writeLoopDone: make(chan struct{}),
+		heartbeatDone: make(chan struct{}),
 	}
+	client.connCond = sync.NewCond(&client.connMu)
 
 	if err := client.connect(); err != nil {
 		return nil, err
@@ -152,19 +191,56 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 }
 
 // connect establishes the WebSocket connection and authenticates.
+// Uses atomic state to prevent thundering herd on reconnection.
 func (c *Client) connect() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.conn != nil {
+	// Fast path: already connected
+	if atomic.LoadInt32(&c.connState) == int32(stateConnected) && c.conn != nil {
 		return nil
 	}
 
-	return c.connectWithRetry()
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	// Double-check after acquiring lock
+	currentState := connectionState(atomic.LoadInt32(&c.connState))
+
+	switch currentState {
+	case stateConnected:
+		if c.conn != nil {
+			return nil
+		}
+		// Connection was lost, proceed to reconnect
+	case stateConnecting:
+		// Another goroutine is connecting, wait for it
+		for atomic.LoadInt32(&c.connState) == int32(stateConnecting) {
+			c.connCond.Wait()
+		}
+		// Check result
+		if atomic.LoadInt32(&c.connState) == int32(stateConnected) && c.conn != nil {
+			return nil
+		}
+		// Connection failed, try again
+	}
+
+	// Mark as connecting
+	atomic.StoreInt32(&c.connState, int32(stateConnecting))
+
+	err := c.connectWithRetry()
+
+	if err != nil {
+		atomic.StoreInt32(&c.connState, int32(stateDisconnected))
+	} else {
+		atomic.StoreInt32(&c.connState, int32(stateConnected))
+	}
+
+	// Wake up all waiters
+	c.connCond.Broadcast()
+
+	return err
 }
 
 // connectWithRetry attempts to connect with exponential backoff retry.
-// Must be called with mutex held.
+// Must be called with connMu held.
 func (c *Client) connectWithRetry() error {
 	// Build WebSocket URL
 	wsScheme := "ws"
@@ -190,13 +266,13 @@ func (c *Client) connectWithRetry() error {
 	for attempt := 0; attempt <= c.config.MaxRetries; attempt++ {
 		if attempt > 0 {
 			klog.V(2).Infof("Retrying TrueNAS connection (attempt %d/%d) after %v", attempt, c.config.MaxRetries, retryInterval)
-			// Unlock during sleep to allow other operations
-			c.mu.Unlock()
+			// Sleep without holding the connMu lock
+			c.connMu.Unlock()
 			time.Sleep(retryInterval)
-			c.mu.Lock()
-			// Check if connection was established while we were sleeping
-			if c.conn != nil {
-				return nil
+			c.connMu.Lock()
+			// Check if closed during sleep
+			if c.closed {
+				return fmt.Errorf("client closed during reconnection")
 			}
 			// Exponential backoff (double the interval, max 30s)
 			retryInterval *= 2
@@ -214,22 +290,37 @@ func (c *Client) connectWithRetry() error {
 			continue
 		}
 
+		c.mu.Lock()
 		c.conn = conn
 		c.closed = false
+		// Reinitialize channels for new connection
+		c.writeCh = make(chan writeRequest, 100)
+		c.writeLoopDone = make(chan struct{})
+		c.heartbeatDone = make(chan struct{})
+		c.mu.Unlock()
 
-		// Start message reader
+		// Start message reader goroutine
 		go c.readMessages()
 
-		// Authenticate
-		if err := c.authenticate(); err != nil {
-			_ = c.conn.Close()
-			c.conn = nil
+		// Start write loop goroutine (non-blocking writes)
+		go c.writeLoop()
+
+		// Authenticate using direct write (before write loop processes requests)
+		if err := c.authenticateDirect(); err != nil {
+			c.cleanupConnection()
 			lastErr = fmt.Errorf("authentication failed: %w", err)
 			klog.Warningf("TrueNAS authentication attempt %d failed: %v", attempt+1, err)
 			continue
 		}
 
+		c.mu.Lock()
 		c.authenticated = true
+		atomic.StoreInt64(&c.lastPong, time.Now().Unix())
+		c.mu.Unlock()
+
+		// Start heartbeat goroutine after successful auth
+		go c.heartbeatLoop()
+
 		klog.Infof("Successfully connected and authenticated to TrueNAS (attempt %d)", attempt+1)
 		return nil
 	}
@@ -237,27 +328,178 @@ func (c *Client) connectWithRetry() error {
 	return fmt.Errorf("failed to connect after %d attempts: %w", c.config.MaxRetries+1, lastErr)
 }
 
-// authenticate performs API key authentication.
-func (c *Client) authenticate() error {
-	result, err := c.callLocked("auth.login_with_api_key", c.config.APIKey)
-	if err != nil {
-		return err
+// cleanupConnection closes the connection and stops goroutines.
+func (c *Client) cleanupConnection() {
+	c.mu.Lock()
+	if c.conn != nil {
+		_ = c.conn.Close()
+		c.conn = nil
+	}
+	c.authenticated = false
+	c.mu.Unlock()
+
+	// Signal goroutines to stop
+	select {
+	case <-c.writeLoopDone:
+	default:
+		close(c.writeLoopDone)
+	}
+	select {
+	case <-c.heartbeatDone:
+	default:
+		close(c.heartbeatDone)
+	}
+}
+
+// authenticateDirect performs API key authentication using direct write.
+// This is used during initial connection before the write loop is active.
+func (c *Client) authenticateDirect() error {
+	c.mu.Lock()
+	c.messageID++
+	id := c.messageID
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("no connection")
 	}
 
-	success, ok := result.(bool)
-	if !ok || !success {
-		return fmt.Errorf("authentication returned unexpected result: %v", result)
+	req := rpcRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  "auth.login_with_api_key",
+		Params:  []interface{}{c.config.APIKey},
 	}
 
-	return nil
+	// Create response channel
+	respChan := make(chan *rpcResponse, 1)
+	c.pendingMu.Lock()
+	c.pending[id] = respChan
+	c.pendingMu.Unlock()
+
+	// Write directly (write loop not yet processing)
+	if err := conn.WriteJSON(req); err != nil {
+		c.pendingMu.Lock()
+		delete(c.pending, id)
+		c.pendingMu.Unlock()
+		return fmt.Errorf("failed to send auth request: %w", err)
+	}
+
+	// Wait for response with timeout
+	select {
+	case resp := <-respChan:
+		if resp.Error != nil {
+			return &APIError{
+				Code:    resp.Error.Code,
+				Message: resp.Error.Message,
+				Data:    resp.Error.Data,
+			}
+		}
+		success, ok := resp.Result.(bool)
+		if !ok || !success {
+			return fmt.Errorf("authentication returned unexpected result: %v", resp.Result)
+		}
+		return nil
+	case <-time.After(c.config.Timeout):
+		c.pendingMu.Lock()
+		delete(c.pending, id)
+		c.pendingMu.Unlock()
+		return fmt.Errorf("authentication timeout")
+	}
+}
+
+// writeLoop handles all WebSocket writes in a dedicated goroutine.
+// This prevents blocking Call() when the network is slow.
+func (c *Client) writeLoop() {
+	for {
+		select {
+		case <-c.writeLoopDone:
+			return
+		case req, ok := <-c.writeCh:
+			if !ok {
+				return
+			}
+
+			c.mu.RLock()
+			conn := c.conn
+			c.mu.RUnlock()
+
+			var err error
+			if conn == nil {
+				err = fmt.Errorf("no connection")
+			} else {
+				err = conn.WriteJSON(req.data)
+			}
+
+			// Send result back to caller
+			select {
+			case req.resultCh <- err:
+			default:
+			}
+		}
+	}
+}
+
+// heartbeatLoop sends periodic pings to detect connection issues.
+func (c *Client) heartbeatLoop() {
+	ticker := time.NewTicker(c.config.HeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.heartbeatDone:
+			return
+		case <-ticker.C:
+			// Check if connection is still valid
+			c.mu.RLock()
+			conn := c.conn
+			closed := c.closed
+			c.mu.RUnlock()
+
+			if closed || conn == nil {
+				return
+			}
+
+			// Send a lightweight ping via core.ping API call
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_, err := c.CallWithContext(ctx, "core.ping")
+			cancel()
+
+			if err != nil {
+				klog.Warningf("Heartbeat ping failed: %v", err)
+				// Check if we've missed too many heartbeats
+				lastPong := atomic.LoadInt64(&c.lastPong)
+				if time.Since(time.Unix(lastPong, 0)) > c.config.HeartbeatInterval*3 {
+					klog.Errorf("Connection appears dead (no response for %v), triggering reconnect", time.Since(time.Unix(lastPong, 0)))
+					c.handleDisconnect()
+					return
+				}
+			} else {
+				atomic.StoreInt64(&c.lastPong, time.Now().Unix())
+				klog.V(5).Info("Heartbeat ping successful")
+			}
+		}
+	}
 }
 
 // readMessages reads incoming WebSocket messages.
 func (c *Client) readMessages() {
 	for {
+		c.mu.RLock()
+		conn := c.conn
+		closed := c.closed
+		c.mu.RUnlock()
+
+		if closed || conn == nil {
+			return
+		}
+
 		var resp rpcResponse
-		if err := c.conn.ReadJSON(&resp); err != nil {
-			if !c.closed {
+		if err := conn.ReadJSON(&resp); err != nil {
+			c.mu.RLock()
+			wasClosed := c.closed
+			c.mu.RUnlock()
+			if !wasClosed {
 				klog.Errorf("WebSocket read error: %v", err)
 			}
 			c.handleDisconnect()
@@ -265,40 +507,79 @@ func (c *Client) readMessages() {
 		}
 
 		// Route response to waiting caller
-		c.mu.Lock()
+		c.pendingMu.Lock()
 		if ch, ok := c.pending[resp.ID]; ok {
 			ch <- &resp
 			delete(c.pending, resp.ID)
 		}
-		c.mu.Unlock()
+		c.pendingMu.Unlock()
 	}
 }
 
 // handleDisconnect handles WebSocket disconnection.
 func (c *Client) handleDisconnect() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Update connection state
+	atomic.StoreInt32(&c.connState, int32(stateDisconnected))
 
+	c.mu.Lock()
 	c.authenticated = false
+	conn := c.conn
 	c.conn = nil
+	c.mu.Unlock()
+
+	// Close the connection if still open
+	if conn != nil {
+		_ = conn.Close()
+	}
+
+	// Stop write loop and heartbeat
+	select {
+	case <-c.writeLoopDone:
+	default:
+		close(c.writeLoopDone)
+	}
+	select {
+	case <-c.heartbeatDone:
+	default:
+		close(c.heartbeatDone)
+	}
 
 	// Cancel all pending requests
+	c.pendingMu.Lock()
 	for id, ch := range c.pending {
-		ch <- &rpcResponse{
+		select {
+		case ch <- &rpcResponse{
 			ID: id,
 			Error: &rpcError{
 				Code:    -1,
 				Message: "connection lost",
 			},
+		}:
+		default:
 		}
 		delete(c.pending, id)
 	}
+	c.pendingMu.Unlock()
+
+	// Notify waiters that connection state changed
+	c.connCond.Broadcast()
 }
 
 // Call makes a JSON-RPC call to the TrueNAS API.
 func (c *Client) Call(method string, params ...interface{}) (interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout)
+	defer cancel()
+	return c.CallWithContext(ctx, method, params...)
+}
+
+// CallWithContext makes a JSON-RPC call with a context for cancellation/timeout.
+func (c *Client) CallWithContext(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
 	// Ensure connected
-	if c.conn == nil {
+	c.mu.RLock()
+	conn := c.conn
+	c.mu.RUnlock()
+
+	if conn == nil {
 		if err := c.connect(); err != nil {
 			return nil, err
 		}
@@ -307,6 +588,8 @@ func (c *Client) Call(method string, params ...interface{}) (interface{}, error)
 	c.mu.Lock()
 	c.messageID++
 	id := c.messageID
+	writeCh := c.writeCh
+	c.mu.Unlock()
 
 	req := rpcRequest{
 		JSONRPC: "2.0",
@@ -317,19 +600,44 @@ func (c *Client) Call(method string, params ...interface{}) (interface{}, error)
 
 	// Create response channel
 	respChan := make(chan *rpcResponse, 1)
+	c.pendingMu.Lock()
 	c.pending[id] = respChan
+	c.pendingMu.Unlock()
 
-	// Send request
-	if err := c.conn.WriteJSON(req); err != nil {
-		delete(c.pending, id)
-		c.mu.Unlock()
-		return nil, fmt.Errorf("failed to send request: %w", err)
+	// Send request through write channel (non-blocking)
+	writeReq := writeRequest{
+		data:     req,
+		resultCh: make(chan error, 1),
 	}
-	c.mu.Unlock()
+
+	select {
+	case writeCh <- writeReq:
+	case <-ctx.Done():
+		c.pendingMu.Lock()
+		delete(c.pending, id)
+		c.pendingMu.Unlock()
+		return nil, ctx.Err()
+	}
+
+	// Wait for write result
+	select {
+	case err := <-writeReq.resultCh:
+		if err != nil {
+			c.pendingMu.Lock()
+			delete(c.pending, id)
+			c.pendingMu.Unlock()
+			return nil, fmt.Errorf("failed to send request: %w", err)
+		}
+	case <-ctx.Done():
+		c.pendingMu.Lock()
+		delete(c.pending, id)
+		c.pendingMu.Unlock()
+		return nil, ctx.Err()
+	}
 
 	klog.V(4).Infof("TrueNAS API call: %s", method)
 
-	// Wait for response with timeout
+	// Wait for response
 	select {
 	case resp := <-respChan:
 		if resp.Error != nil {
@@ -340,84 +648,50 @@ func (c *Client) Call(method string, params ...interface{}) (interface{}, error)
 			}
 		}
 		return resp.Result, nil
-	case <-time.After(c.config.Timeout):
-		c.mu.Lock()
+	case <-ctx.Done():
+		c.pendingMu.Lock()
 		delete(c.pending, id)
-		c.mu.Unlock()
+		c.pendingMu.Unlock()
 		return nil, fmt.Errorf("request timeout: %s", method)
 	}
 }
 
-// callLocked makes a call while already holding the mutex (for authentication).
-func (c *Client) callLocked(method string, params ...interface{}) (interface{}, error) {
-	c.messageID++
-	id := c.messageID
-
-	req := rpcRequest{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  params,
-	}
-
-	// Create response channel
-	respChan := make(chan *rpcResponse, 1)
-	c.pending[id] = respChan
-
-	// Send request
-	if err := c.conn.WriteJSON(req); err != nil {
-		delete(c.pending, id)
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	// Temporarily unlock to allow message reader to work
-	c.mu.Unlock()
-
-	// Wait for response with timeout
-	var resp *rpcResponse
-	var timedOut bool
-	select {
-	case resp = <-respChan:
-		// Response received
-	case <-time.After(c.config.Timeout):
-		timedOut = true
-	}
-
-	// Re-acquire lock before returning (caller expects lock to be held)
-	c.mu.Lock()
-
-	if timedOut {
-		delete(c.pending, id)
-		return nil, fmt.Errorf("request timeout: %s", method)
-	}
-
-	if resp.Error != nil {
-		return nil, &APIError{
-			Code:    resp.Error.Code,
-			Message: resp.Error.Message,
-			Data:    resp.Error.Data,
-		}
-	}
-	return resp.Result, nil
-}
 
 // Close closes the WebSocket connection.
 func (c *Client) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.closed = true
-	if c.conn != nil {
-		err := c.conn.Close()
-		c.conn = nil
-		return err
+	conn := c.conn
+	c.conn = nil
+	c.mu.Unlock()
+
+	// Update state
+	atomic.StoreInt32(&c.connState, int32(stateDisconnected))
+
+	// Stop goroutines
+	select {
+	case <-c.writeLoopDone:
+	default:
+		close(c.writeLoopDone)
+	}
+	select {
+	case <-c.heartbeatDone:
+	default:
+		close(c.heartbeatDone)
+	}
+
+	// Notify waiters
+	c.connCond.Broadcast()
+
+	if conn != nil {
+		return conn.Close()
 	}
 	return nil
 }
 
 // IsConnected returns true if the client is connected and authenticated.
 func (c *Client) IsConnected() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.conn != nil && c.authenticated
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conn != nil && c.authenticated && atomic.LoadInt32(&c.connState) == int32(stateConnected)
 }

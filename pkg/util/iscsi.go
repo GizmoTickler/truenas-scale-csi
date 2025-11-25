@@ -21,9 +21,28 @@ type ISCSISession struct {
 	SessionID    string
 }
 
+// DefaultISCSIDeviceTimeout is the default timeout for waiting for iSCSI devices to appear.
+const DefaultISCSIDeviceTimeout = 60 * time.Second
+
+// ISCSIConnectOptions holds options for iSCSI connection.
+type ISCSIConnectOptions struct {
+	DeviceTimeout time.Duration // Timeout for waiting for device to appear (default: 60s)
+}
+
 // ISCSIConnect connects to an iSCSI target and returns the device path.
 func ISCSIConnect(portal, iqn string, lun int) (string, error) {
+	return ISCSIConnectWithOptions(portal, iqn, lun, nil)
+}
+
+// ISCSIConnectWithOptions connects to an iSCSI target with configurable options.
+func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOptions) (string, error) {
 	klog.V(4).Infof("ISCSIConnect: portal=%s, iqn=%s, lun=%d", portal, iqn, lun)
+
+	// Apply defaults
+	timeout := DefaultISCSIDeviceTimeout
+	if opts != nil && opts.DeviceTimeout > 0 {
+		timeout = opts.DeviceTimeout
+	}
 
 	// Discover targets
 	if err := iscsiDiscovery(portal); err != nil {
@@ -36,9 +55,9 @@ func ISCSIConnect(portal, iqn string, lun int) (string, error) {
 	}
 
 	// Wait for device to appear
-	devicePath, err := waitForISCSIDevice(portal, iqn, lun, 30*time.Second)
+	devicePath, err := waitForISCSIDevice(portal, iqn, lun, timeout)
 	if err != nil {
-		return "", fmt.Errorf("device not found: %w", err)
+		return "", fmt.Errorf("device not found after %v: %w", timeout, err)
 	}
 
 	return devicePath, nil

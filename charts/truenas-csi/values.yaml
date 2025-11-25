@@ -156,6 +156,10 @@ iscsi:
   # IQN base name
   basename: "iqn.2005-10.org.freenas.ctl"
 
+  # Timeout in seconds to wait for iSCSI device to appear after login
+  # Increase this for heavily loaded nodes or slow networks
+  deviceWaitTimeout: 60
+
 # NVMe-oF configuration
 nvmeof:
   # Enable NVMe-oF support

@@ -136,7 +136,9 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create iSCSI target: %v", err)
 	}
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropISCSITargetID, strconv.Itoa(target.ID))
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropISCSITargetID, strconv.Itoa(target.ID)); err != nil {
+		klog.Warningf("Failed to store iSCSI target ID: %v", err)
+	}
 
 	// Create extent
 	diskPath := fmt.Sprintf("zvol/%s", datasetName)
@@ -150,19 +152,29 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 		d.config.ISCSI.ExtentRpm,
 	)
 	if err != nil {
-		d.truenasClient.ISCSITargetDelete(target.ID, true)
+		if delErr := d.truenasClient.ISCSITargetDelete(target.ID, true); delErr != nil {
+			klog.Warningf("Failed to cleanup iSCSI target: %v", delErr)
+		}
 		return status.Errorf(codes.Internal, "failed to create iSCSI extent: %v", err)
 	}
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropISCSIExtentID, strconv.Itoa(extent.ID))
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropISCSIExtentID, strconv.Itoa(extent.ID)); err != nil {
+		klog.Warningf("Failed to store iSCSI extent ID: %v", err)
+	}
 
 	// Create target-extent association
 	targetExtent, err := d.truenasClient.ISCSITargetExtentCreate(target.ID, extent.ID, 0)
 	if err != nil {
-		d.truenasClient.ISCSIExtentDelete(extent.ID, false, true)
-		d.truenasClient.ISCSITargetDelete(target.ID, true)
+		if delErr := d.truenasClient.ISCSIExtentDelete(extent.ID, false, true); delErr != nil {
+			klog.Warningf("Failed to cleanup iSCSI extent: %v", delErr)
+		}
+		if delErr := d.truenasClient.ISCSITargetDelete(target.ID, true); delErr != nil {
+			klog.Warningf("Failed to cleanup iSCSI target: %v", delErr)
+		}
 		return status.Errorf(codes.Internal, "failed to create target-extent association: %v", err)
 	}
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropISCSITargetExtentID, strconv.Itoa(targetExtent.ID))
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropISCSITargetExtentID, strconv.Itoa(targetExtent.ID)); err != nil {
+		klog.Warningf("Failed to store iSCSI target-extent ID: %v", err)
+	}
 
 	klog.Infof("Created iSCSI target=%d, extent=%d, targetextent=%d for %s", target.ID, extent.ID, targetExtent.ID, datasetName)
 	return nil
@@ -173,21 +185,27 @@ func (d *Driver) deleteISCSIShare(ctx context.Context, datasetName string) error
 	// Delete target-extent association
 	if teIDStr, _ := d.truenasClient.DatasetGetUserProperty(datasetName, PropISCSITargetExtentID); teIDStr != "" && teIDStr != "-" {
 		if teID, err := strconv.Atoi(teIDStr); err == nil {
-			d.truenasClient.ISCSITargetExtentDelete(teID, true)
+			if err := d.truenasClient.ISCSITargetExtentDelete(teID, true); err != nil {
+				klog.Warningf("Failed to delete iSCSI target-extent %d: %v", teID, err)
+			}
 		}
 	}
 
 	// Delete extent
 	if extIDStr, _ := d.truenasClient.DatasetGetUserProperty(datasetName, PropISCSIExtentID); extIDStr != "" && extIDStr != "-" {
 		if extID, err := strconv.Atoi(extIDStr); err == nil {
-			d.truenasClient.ISCSIExtentDelete(extID, false, true)
+			if err := d.truenasClient.ISCSIExtentDelete(extID, false, true); err != nil {
+				klog.Warningf("Failed to delete iSCSI extent %d: %v", extID, err)
+			}
 		}
 	}
 
 	// Delete target
 	if tgtIDStr, _ := d.truenasClient.DatasetGetUserProperty(datasetName, PropISCSITargetID); tgtIDStr != "" && tgtIDStr != "-" {
 		if tgtID, err := strconv.Atoi(tgtIDStr); err == nil {
-			d.truenasClient.ISCSITargetDelete(tgtID, true)
+			if err := d.truenasClient.ISCSITargetDelete(tgtID, true); err != nil {
+				klog.Warningf("Failed to delete iSCSI target %d: %v", tgtID, err)
+			}
 		}
 	}
 
@@ -229,16 +247,22 @@ func (d *Driver) createNVMeoFShare(ctx context.Context, datasetName string, volu
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create NVMe-oF subsystem: %v", err)
 	}
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropNVMeoFSubsystemID, strconv.Itoa(subsys.ID))
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropNVMeoFSubsystemID, strconv.Itoa(subsys.ID)); err != nil {
+		klog.Warningf("Failed to store NVMe-oF subsystem ID: %v", err)
+	}
 
 	// Create namespace
 	devicePath := fmt.Sprintf("/dev/zvol/%s", datasetName)
 	namespace, err := d.truenasClient.NVMeoFNamespaceCreate(subsys.ID, devicePath)
 	if err != nil {
-		d.truenasClient.NVMeoFSubsystemDelete(subsys.ID)
+		if delErr := d.truenasClient.NVMeoFSubsystemDelete(subsys.ID); delErr != nil {
+			klog.Warningf("Failed to cleanup NVMe-oF subsystem: %v", delErr)
+		}
 		return status.Errorf(codes.Internal, "failed to create NVMe-oF namespace: %v", err)
 	}
-	d.truenasClient.DatasetSetUserProperty(datasetName, PropNVMeoFNamespaceID, strconv.Itoa(namespace.ID))
+	if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropNVMeoFNamespaceID, strconv.Itoa(namespace.ID)); err != nil {
+		klog.Warningf("Failed to store NVMe-oF namespace ID: %v", err)
+	}
 
 	klog.Infof("Created NVMe-oF subsystem=%d, namespace=%d for %s", subsys.ID, namespace.ID, datasetName)
 	return nil
@@ -249,14 +273,18 @@ func (d *Driver) deleteNVMeoFShare(ctx context.Context, datasetName string) erro
 	// Delete namespace
 	if nsIDStr, _ := d.truenasClient.DatasetGetUserProperty(datasetName, PropNVMeoFNamespaceID); nsIDStr != "" && nsIDStr != "-" {
 		if nsID, err := strconv.Atoi(nsIDStr); err == nil {
-			d.truenasClient.NVMeoFNamespaceDelete(nsID)
+			if err := d.truenasClient.NVMeoFNamespaceDelete(nsID); err != nil {
+				klog.Warningf("Failed to delete NVMe-oF namespace %d: %v", nsID, err)
+			}
 		}
 	}
 
 	// Delete subsystem
 	if ssIDStr, _ := d.truenasClient.DatasetGetUserProperty(datasetName, PropNVMeoFSubsystemID); ssIDStr != "" && ssIDStr != "-" {
 		if ssID, err := strconv.Atoi(ssIDStr); err == nil {
-			d.truenasClient.NVMeoFSubsystemDelete(ssID)
+			if err := d.truenasClient.NVMeoFSubsystemDelete(ssID); err != nil {
+				klog.Warningf("Failed to delete NVMe-oF subsystem %d: %v", ssID, err)
+			}
 		}
 	}
 

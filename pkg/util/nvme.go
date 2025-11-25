@@ -178,19 +178,17 @@ func waitForNVMeDevice(nqn string, timeout time.Duration) (string, error) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			devicePath, err := findNVMeDevice(nqn)
-			if err == nil && devicePath != "" {
-				return devicePath, nil
-			}
+	for range ticker.C {
+		devicePath, err := findNVMeDevice(nqn)
+		if err == nil && devicePath != "" {
+			return devicePath, nil
+		}
 
-			if time.Since(start) > timeout {
-				return "", fmt.Errorf("timeout waiting for device (nqn=%s)", nqn)
-			}
+		if time.Since(start) > timeout {
+			return "", fmt.Errorf("timeout waiting for device (nqn=%s)", nqn)
 		}
 	}
+	return "", fmt.Errorf("ticker stopped unexpectedly")
 }
 
 // findNVMeDevice finds the device path for an NVMe subsystem.

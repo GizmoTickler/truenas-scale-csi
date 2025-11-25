@@ -154,19 +154,17 @@ func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (str
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			devicePath, err := findISCSIDevice(iqn, lun)
-			if err == nil && devicePath != "" {
-				return devicePath, nil
-			}
+	for range ticker.C {
+		devicePath, err := findISCSIDevice(iqn, lun)
+		if err == nil && devicePath != "" {
+			return devicePath, nil
+		}
 
-			if time.Since(start) > timeout {
-				return "", fmt.Errorf("timeout waiting for device (iqn=%s, lun=%d)", iqn, lun)
-			}
+		if time.Since(start) > timeout {
+			return "", fmt.Errorf("timeout waiting for device (iqn=%s, lun=%d)", iqn, lun)
 		}
 	}
+	return "", fmt.Errorf("ticker stopped unexpectedly")
 }
 
 // findISCSIDevice finds the device path for an iSCSI LUN.

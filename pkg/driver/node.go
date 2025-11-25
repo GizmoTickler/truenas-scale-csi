@@ -144,6 +144,14 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	}
 	defer d.releaseOperationLock(lockKey)
 
+	// Get device path before unmounting (for session cleanup)
+	devicePath, err := util.GetDeviceFromMountPoint(stagingPath)
+	if err != nil {
+		// If not mounted, we can't get the device path, so we can't cleanup session
+		// This is expected if already unstaged
+		klog.V(4).Infof("Could not get device from mount point %s: %v", stagingPath, err)
+	}
+
 	// Unmount staging path
 	if err := util.Unmount(stagingPath); err != nil {
 		klog.Warningf("Failed to unmount staging path: %v", err)
@@ -152,6 +160,35 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	// Clean up staging directory
 	if err := os.RemoveAll(stagingPath); err != nil {
 		klog.Warningf("Failed to remove staging directory: %v", err)
+	}
+
+	// Disconnect session if we found a device
+	if devicePath != "" {
+		if strings.Contains(devicePath, "nvme") {
+			// NVMe-oF cleanup
+			nqn, err := util.GetNVMeInfoFromDevice(devicePath)
+			if err == nil {
+				if err := util.NVMeoFDisconnect(nqn); err != nil {
+					klog.Warningf("Failed to disconnect NVMe-oF session %s: %v", nqn, err)
+				} else {
+					klog.Infof("Disconnected NVMe-oF session %s", nqn)
+				}
+			} else {
+				klog.V(4).Infof("Could not get NVMe info from device %s: %v", devicePath, err)
+			}
+		} else {
+			// Try iSCSI cleanup
+			portal, iqn, err := util.GetISCSIInfoFromDevice(devicePath)
+			if err == nil {
+				if err := util.ISCSIDisconnect(portal, iqn); err != nil {
+					klog.Warningf("Failed to disconnect iSCSI session %s: %v", iqn, err)
+				} else {
+					klog.Infof("Disconnected iSCSI session %s", iqn)
+				}
+			} else {
+				klog.V(4).Infof("Could not get iSCSI info from device %s: %v", devicePath, err)
+			}
+		}
 	}
 
 	klog.Infof("Volume %s unstaged successfully", volumeID)

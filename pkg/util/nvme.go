@@ -411,3 +411,39 @@ func NVMeDiscovery(transport, host, port string) ([]string, error) {
 
 	return nqns, nil
 }
+
+// GetNVMeInfoFromDevice returns the NQN for a given device path.
+func GetNVMeInfoFromDevice(devicePath string) (string, error) {
+	deviceName := filepath.Base(devicePath)
+
+	// Check if it's an NVMe device
+	if !strings.HasPrefix(deviceName, "nvme") {
+		return "", fmt.Errorf("not an NVMe device: %s", devicePath)
+	}
+
+	// Find subsystem NQN
+	// nvme0n1 -> nvme0
+	parts := strings.Split(deviceName, "n")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid NVMe device name: %s", deviceName)
+	}
+	ctrlName := parts[0]
+
+	// Read subsysnqn from controller
+	// /sys/class/nvme/nvme0/subsysnqn
+	nqnPath := filepath.Join("/sys/class/nvme", ctrlName, "subsysnqn")
+	content, err := os.ReadFile(nqnPath)
+	if err == nil {
+		return strings.TrimSpace(string(content)), nil
+	}
+
+	// Try via subsystem link
+	// /sys/class/nvme/nvme0/subsystem/subsysnqn
+	nqnPath = filepath.Join("/sys/class/nvme", ctrlName, "subsystem", "subsysnqn")
+	content, err = os.ReadFile(nqnPath)
+	if err == nil {
+		return strings.TrimSpace(string(content)), nil
+	}
+
+	return "", fmt.Errorf("could not find NQN for device %s", devicePath)
+}

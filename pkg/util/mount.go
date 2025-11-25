@@ -201,12 +201,10 @@ func ResizeFilesystem(mountPath string) error {
 	klog.Infof("Resizing filesystem at %s", mountPath)
 
 	// Get the device path
-	cmd := exec.Command("findmnt", "-n", "-o", "SOURCE", mountPath)
-	output, err := cmd.Output()
+	devicePath, err := GetDeviceFromMountPoint(mountPath)
 	if err != nil {
-		return fmt.Errorf("failed to find device: %v", err)
+		return fmt.Errorf("failed to get device from mount point: %v", err)
 	}
-	devicePath := strings.TrimSpace(string(output))
 
 	// Get filesystem type
 	fsType, err := GetFilesystemType(devicePath)
@@ -215,6 +213,7 @@ func ResizeFilesystem(mountPath string) error {
 	}
 
 	// Resize based on filesystem type
+	var cmd *exec.Cmd
 	switch fsType {
 	case "ext4", "ext3", "ext2":
 		cmd = exec.Command("resize2fs", devicePath)
@@ -226,10 +225,20 @@ func ResizeFilesystem(mountPath string) error {
 		return fmt.Errorf("resize not supported for filesystem type: %s", fsType)
 	}
 
-	output, err = cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("resize failed: %v, output: %s", err, string(output))
 	}
 
 	return nil
+}
+
+// GetDeviceFromMountPoint returns the device path for a mount point.
+func GetDeviceFromMountPoint(mountPath string) (string, error) {
+	cmd := exec.Command("findmnt", "-n", "-o", "SOURCE", mountPath)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to find device: %v", err)
+	}
+	return strings.TrimSpace(string(output)), nil
 }

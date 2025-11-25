@@ -771,14 +771,19 @@ func (d *Driver) getVolumeContext(datasetName string) (map[string]string, error)
 	case "iscsi":
 		// Get target info from dataset properties
 		if prop, ok := ds.UserProperties[PropISCSITargetID]; ok {
-			targetID, _ := strconv.Atoi(prop.Value)
-			target, err := d.truenasClient.ISCSITargetGet(targetID)
-			if err == nil {
-				globalCfg, _ := d.truenasClient.ISCSIGlobalConfigGet()
-				if globalCfg != nil {
-					context["iqn"] = fmt.Sprintf("%s:%s", globalCfg.Basename, target.Name)
-				}
+			targetID, err := strconv.Atoi(prop.Value)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "invalid target ID: %v", err)
 			}
+			target, err := d.truenasClient.ISCSITargetGet(targetID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get iSCSI target: %v", err)
+			}
+			globalCfg, err := d.truenasClient.ISCSIGlobalConfigGet()
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get iSCSI global config: %v", err)
+			}
+			context["iqn"] = fmt.Sprintf("%s:%s", globalCfg.Basename, target.Name)
 		}
 		context["portal"] = d.config.ISCSI.TargetPortal
 		context["lun"] = "0"
@@ -787,11 +792,15 @@ func (d *Driver) getVolumeContext(datasetName string) (map[string]string, error)
 	case "nvmeof":
 		// Get subsystem info from dataset properties
 		if prop, ok := ds.UserProperties[PropNVMeoFSubsystemID]; ok {
-			subsysID, _ := strconv.Atoi(prop.Value)
-			subsys, err := d.truenasClient.NVMeoFSubsystemGet(subsysID)
-			if err == nil {
-				context["nqn"] = subsys.NQN
+			subsysID, err := strconv.Atoi(prop.Value)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "invalid subsystem ID: %v", err)
 			}
+			subsys, err := d.truenasClient.NVMeoFSubsystemGet(subsysID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to get NVMe-oF subsystem: %v", err)
+			}
+			context["nqn"] = subsys.NQN
 		}
 		context["transport"] = d.config.NVMeoF.Transport
 		context["address"] = d.config.NVMeoF.TransportAddress

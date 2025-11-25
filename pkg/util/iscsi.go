@@ -398,3 +398,83 @@ func FlushDeviceBuffers(devicePath string) error {
 	}
 	return nil
 }
+
+// GetISCSIInfoFromDevice returns the portal and IQN for a given device path.
+func GetISCSIInfoFromDevice(devicePath string) (string, string, error) {
+	deviceName := filepath.Base(devicePath)
+
+	// Find session directory in sysfs
+	// /sys/block/sdX/device points to the scsi device
+	sysPath := filepath.Join("/sys/block", deviceName, "device")
+	targetPath, err := filepath.EvalSymlinks(sysPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve sysfs path: %v", err)
+	}
+
+	// Walk up until we find "session*"
+	sessionDir := ""
+	curr := targetPath
+	for i := 0; i < 10; i++ { // limit depth
+		if strings.HasPrefix(filepath.Base(curr), "session") {
+			sessionDir = curr
+			break
+		}
+		parent := filepath.Dir(curr)
+		if parent == curr {
+			break
+		}
+		curr = parent
+	}
+
+	if sessionDir == "" {
+		return "", "", fmt.Errorf("could not find session directory for %s", devicePath)
+	}
+
+	// Get IQN
+	// Try to find targetname file in the session directory structure
+	iqn := ""
+	// Common path: sessionDir/iscsi_session/sessionY/targetname
+	globPattern := filepath.Join(sessionDir, "iscsi_session", "session*", "targetname")
+	matches, _ := filepath.Glob(globPattern)
+	if len(matches) > 0 {
+		content, err := os.ReadFile(matches[0])
+		if err == nil {
+			iqn = strings.TrimSpace(string(content))
+		}
+	}
+
+	if iqn == "" {
+		// Fallback: direct search
+		err = filepath.Walk(sessionDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if filepath.Base(path) == "targetname" {
+				content, err := os.ReadFile(path)
+				if err == nil {
+					iqn = strings.TrimSpace(string(content))
+					return filepath.SkipDir // Found it
+				}
+			}
+			return nil
+		})
+	}
+
+	if iqn == "" {
+		return "", "", fmt.Errorf("could not find targetname for session %s", sessionDir)
+	}
+
+	// Get Portal using iscsiadm
+	sessions, err := getISCSISessions()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get sessions: %v", err)
+	}
+
+	for _, s := range sessions {
+		if s.IQN == iqn {
+			return s.TargetPortal, s.IQN, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("could not find portal for IQN %s", iqn)
+}

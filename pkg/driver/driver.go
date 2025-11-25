@@ -157,7 +157,9 @@ func (d *Driver) Stop() {
 		d.server.GracefulStop()
 	}
 	if d.truenasClient != nil {
-		d.truenasClient.Close()
+		if err := d.truenasClient.Close(); err != nil {
+			klog.Warningf("Failed to close TrueNAS client: %v", err)
+		}
 	}
 }
 

@@ -133,7 +133,7 @@ func (c *Client) connect() error {
 
 	// Authenticate
 	if err := c.authenticate(); err != nil {
-		c.conn.Close()
+		_ = c.conn.Close()
 		c.conn = nil
 		return fmt.Errorf("authentication failed: %w", err)
 	}

@@ -8,7 +8,7 @@ require (
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/sync v0.17.0
+	golang.org/x/sync v0.18.0
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1

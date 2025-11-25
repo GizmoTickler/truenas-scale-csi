@@ -30,9 +30,10 @@ jobs:
       - name: Run go vet
         run: go vet ./...
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v1.65.0
+          install-mode: goinstall
 
   test:
     runs-on: ubuntu-latest

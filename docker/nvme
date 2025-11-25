@@ -15,7 +15,8 @@ case ${NVME_HOST_STRATEGY} in
 
   nsenter)
     # Find nvme-related process to get host namespace
-    nvme_pid=$(pgrep --exact --oldest nvme-cli 2>/dev/null || pgrep -f nvme 2>/dev/null | head -1)
+    # Use -x -o for busybox pgrep compatibility (not --exact --oldest)
+    nvme_pid=$(pgrep -x -o nvme-cli 2>/dev/null || pgrep -f nvme 2>/dev/null | head -1)
     if [[ "${nvme_pid}x" == "x" ]]; then
       # Fallback to chroot if no nvme process found
       chroot /host ${NVME_HOST_PATH} "${@:1}"

@@ -15,7 +15,8 @@ case ${ISCSIADM_HOST_STRATEGY} in
   nsenter)
     # https://github.com/siderolabs/extensions/issues/38#issuecomment-1125403043
     # Preferred method for Talos and other minimal OS
-    iscsid_pid=$(pgrep --exact --oldest iscsid)
+    # Use -x -o for busybox pgrep compatibility (not --exact --oldest)
+    iscsid_pid=$(pgrep -x -o iscsid)
     if [[ "${iscsid_pid}x" == "x" ]]; then
       echoerr "failed to find iscsid pid for nsenter"
       exit 1

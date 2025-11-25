@@ -1,3 +1,12 @@
+# v2.2.3
+
+Release 2025-11-25
+
+**Bug Fixes:**
+- Fixed pgrep syntax for busybox/Alpine compatibility
+  - Changed from GNU pgrep flags (`--exact --oldest`) to POSIX/busybox flags (`-x -o`)
+  - Fixes "pgrep: unrecognized option: exact" error in Alpine containers
+
 # v2.2.2
 
 Release 2025-11-25

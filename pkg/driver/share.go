@@ -129,8 +129,17 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 		iscsiName = iscsiName + d.config.ISCSI.NameSuffix
 	}
 
-	// Create target
-	target, err := d.truenasClient.ISCSITargetCreate(iscsiName, "", "ISCSI", []truenas.ISCSITargetGroup{})
+	// Create target with configured target groups (portal + initiator)
+	targetGroups := []truenas.ISCSITargetGroup{}
+	for _, tg := range d.config.ISCSI.TargetGroups {
+		targetGroups = append(targetGroups, truenas.ISCSITargetGroup{
+			Portal:     tg.Portal,
+			Initiator:  tg.Initiator,
+			AuthMethod: tg.AuthMethod,
+			Auth:       tg.Auth,
+		})
+	}
+	target, err := d.truenasClient.ISCSITargetCreate(iscsiName, "", "ISCSI", targetGroups)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create iSCSI target: %v", err)
 	}

@@ -1,3 +1,13 @@
+# v2.2.6
+
+Release 2025-11-25
+
+**Bug Fixes:**
+- Fixed iSCSI target creation to include portal/initiator group association
+  - Targets were being created without linking to any portal group
+  - Now properly uses `iscsi.targetGroups` configuration for portal and initiator association
+  - Fixes "No portals found" error during iSCSI discovery
+
 # v2.2.5
 
 Release 2025-11-25

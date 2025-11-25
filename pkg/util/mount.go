@@ -106,12 +106,10 @@ func Unmount(target string) error {
 	}
 
 	cmd := exec.Command("umount", target)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	if _, err := cmd.CombinedOutput(); err != nil {
 		// Try lazy unmount
 		cmd = exec.Command("umount", "-l", target)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
+		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("unmount failed: %v, output: %s", err, string(output))
 		}
 	}

@@ -1,3 +1,23 @@
+# v2.2.1
+
+Release 2025-11-25
+
+**Bug Fixes:**
+- Added `bash` to Alpine container image - wrapper scripts (iscsiadm, mount, umount, nvme) require bash
+- Fixed Helm chart CLI flags - changed from `--controller/--node` to correct `-mode=controller/-mode=node` format
+- Added required `-config` flag to driver arguments
+
+**New Features:**
+- Added ConfigMap template for driver configuration (TrueNAS connection, ZFS, NFS, iSCSI, NVMe-oF settings)
+- Support for `protocol` parameter in StorageClass - allows single driver instance to handle multiple protocols
+  - Set `protocol: iscsi`, `protocol: nfs`, or `protocol: nvmeof` in StorageClass parameters
+  - Falls back to driver name-based detection if not specified
+
+**Technical Changes:**
+- Added `GetShareType()` function that checks StorageClass params before driver name
+- Updated `createShare`, `createDataset`, `getVolumeContext` to accept shareType parameter
+- `DeleteVolume` now detects share type from dataset type (FILESYSTEM=nfs, VOLUME=iscsi/nvmeof)
+
 # v2.2.0
 
 Release 2025-11-25

@@ -1,0 +1,20 @@
+# Chart Releaser Configuration
+# See: https://github.com/helm/chart-releaser#configuration
+
+# Owner of the repository
+owner: GizmoTickler
+
+# Name of the git repo
+git-repo: truenas-scale-csi
+
+# The GitHub Pages branch
+pages-branch: gh-pages
+
+# Skip packaging if package already exists
+skip-existing: true
+
+# Generate release notes
+generate-release-notes: true
+
+# Mark chart releases as latest
+mark-as-latest: true

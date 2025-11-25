@@ -1,0 +1,66 @@
+# Helm Chart Release Workflow
+# Publishes Helm charts to GitHub Pages at https://gizmotickler.github.io/truenas-scale-csi/
+
+name: Helm Chart Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm-release.yml'
+  # Also trigger on version tags to sync chart releases with app releases
+  release:
+    types: [published]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.0
+
+      - name: Add Helm repositories (if needed for dependencies)
+        run: |
+          helm repo add stable https://charts.helm.sh/stable || true
+
+      - name: Update chart appVersion on release
+        if: github.event_name == 'release'
+        run: |
+          # Extract version from release tag (remove 'v' prefix if present)
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+
+          # Update appVersion in Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/truenas-csi/Chart.yaml
+
+          # Optionally bump chart version to match app version
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/truenas-csi/Chart.yaml
+
+          echo "Updated chart to version ${VERSION}"
+          cat charts/truenas-csi/Chart.yaml
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          charts_dir: charts
+          config: .github/cr-config.yaml
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

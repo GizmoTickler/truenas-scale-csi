@@ -1,3 +1,17 @@
+# v2.2.7
+
+Release 2025-11-25
+
+**Performance Improvements:**
+- Optimized iSCSI mount time (from ~40s to ~5-10s for new connections)
+  - Session reuse: Skip discovery if already connected to the target
+  - Faster device polling: Start at 50ms with exponential backoff (vs fixed 500ms)
+  - Added detailed timing logs for debugging mount performance
+
+**CI/CD Fixes:**
+- Fixed GitHub release permissions
+- Fixed Helm chart release workflow (corrected Helm version)
+
 # v2.2.6
 
 Release 2025-11-25

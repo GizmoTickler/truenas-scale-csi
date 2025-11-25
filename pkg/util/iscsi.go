@@ -36,7 +36,8 @@ func ISCSIConnect(portal, iqn string, lun int) (string, error) {
 
 // ISCSIConnectWithOptions connects to an iSCSI target with configurable options.
 func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOptions) (string, error) {
-	klog.V(4).Infof("ISCSIConnect: portal=%s, iqn=%s, lun=%d", portal, iqn, lun)
+	start := time.Now()
+	klog.Infof("ISCSIConnect: portal=%s, iqn=%s, lun=%d", portal, iqn, lun)
 
 	// Apply defaults
 	timeout := DefaultISCSIDeviceTimeout
@@ -44,22 +45,48 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 		timeout = opts.DeviceTimeout
 	}
 
+	// Check if already logged in - skip discovery if session exists
+	sessions, err := getISCSISessions()
+	if err != nil {
+		klog.V(4).Infof("Failed to get sessions: %v, will proceed with discovery", err)
+	} else {
+		for _, session := range sessions {
+			if session.IQN == iqn {
+				klog.Infof("Session already exists for %s, skipping discovery (elapsed: %v)", iqn, time.Since(start))
+				// Session exists, just wait for device
+				devicePath, err := waitForISCSIDevice(portal, iqn, lun, timeout)
+				if err != nil {
+					return "", fmt.Errorf("device not found after %v: %w", timeout, err)
+				}
+				klog.Infof("ISCSIConnect completed (session reuse) in %v", time.Since(start))
+				return devicePath, nil
+			}
+		}
+	}
+
 	// Discover targets
+	discoveryStart := time.Now()
 	if err := iscsiDiscovery(portal); err != nil {
 		return "", fmt.Errorf("discovery failed: %w", err)
 	}
+	klog.Infof("iSCSI discovery completed in %v", time.Since(discoveryStart))
 
 	// Login to target
+	loginStart := time.Now()
 	if err := iscsiLogin(portal, iqn); err != nil {
 		return "", fmt.Errorf("login failed: %w", err)
 	}
+	klog.Infof("iSCSI login completed in %v", time.Since(loginStart))
 
 	// Wait for device to appear
+	deviceStart := time.Now()
 	devicePath, err := waitForISCSIDevice(portal, iqn, lun, timeout)
 	if err != nil {
 		return "", fmt.Errorf("device not found after %v: %w", timeout, err)
 	}
+	klog.Infof("iSCSI device appeared in %v", time.Since(deviceStart))
 
+	klog.Infof("ISCSIConnect completed (full connect) in %v", time.Since(start))
 	return devicePath, nil
 }
 
@@ -168,12 +195,13 @@ func getISCSISessions() ([]ISCSISession, error) {
 }
 
 // waitForISCSIDevice waits for the iSCSI device to appear in /dev.
+// Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
 func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (string, error) {
 	start := time.Now()
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	pollInterval := 50 * time.Millisecond
+	maxPollInterval := 500 * time.Millisecond
 
-	for range ticker.C {
+	for {
 		devicePath, err := findISCSIDevice(iqn, lun)
 		if err == nil && devicePath != "" {
 			return devicePath, nil
@@ -182,8 +210,14 @@ func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (str
 		if time.Since(start) > timeout {
 			return "", fmt.Errorf("timeout waiting for device (iqn=%s, lun=%d)", iqn, lun)
 		}
+
+		time.Sleep(pollInterval)
+		// Exponential backoff: 50ms -> 100ms -> 200ms -> 400ms -> 500ms (max)
+		pollInterval *= 2
+		if pollInterval > maxPollInterval {
+			pollInterval = maxPollInterval
+		}
 	}
-	return "", fmt.Errorf("ticker stopped unexpectedly")
 }
 
 // findISCSIDevice finds the device path for an iSCSI LUN.

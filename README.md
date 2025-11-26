@@ -238,7 +238,7 @@ helm install truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
   --values values.yaml \
-  --version 2.2.8
+  --version 2.2.9
 ```
 
 See [Deployment Guide](docs/deployment.md) for full details.

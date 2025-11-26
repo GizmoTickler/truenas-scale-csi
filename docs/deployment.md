@@ -37,7 +37,7 @@ helm install truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
   --values values.yaml \
-  --version 2.2.8
+  --version 2.2.9
 ```
 
 ## Flux Deployment
@@ -71,7 +71,7 @@ spec:
   chart:
     spec:
       chart: truenas-csi
-      version: "2.2.8"
+      version: "2.2.9"
       sourceRef:
         kind: HelmRepository
         name: truenas-csi

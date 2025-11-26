@@ -377,7 +377,23 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	klog.V(4).Info("ListVolumes called")
 
-	datasets, err := d.truenasClient.DatasetList(ctx, d.config.ZFS.DatasetParentName)
+	// Parse starting token as offset
+	offset := 0
+	if req.GetStartingToken() != "" {
+		var err error
+		offset, err = strconv.Atoi(req.GetStartingToken())
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token: %v", err)
+		}
+	}
+
+	// Use max entries as limit (default to 100 if not specified or 0)
+	limit := int(req.GetMaxEntries())
+	if limit == 0 {
+		limit = 100
+	}
+
+	datasets, err := d.truenasClient.DatasetList(ctx, d.config.ZFS.DatasetParentName, limit, offset)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list volumes: %v", err)
 	}
@@ -400,8 +416,15 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 		})
 	}
 
+	// Generate next token if we got a full page
+	nextToken := ""
+	if len(datasets) == limit {
+		nextToken = strconv.Itoa(offset + limit)
+	}
+
 	return &csi.ListVolumesResponse{
-		Entries: entries,
+		Entries:   entries,
+		NextToken: nextToken,
 	}, nil
 }
 
@@ -538,7 +561,23 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	klog.V(4).Info("ListSnapshots called")
 
-	snapshots, err := d.truenasClient.SnapshotListAll(ctx, d.config.ZFS.DatasetParentName)
+	// Parse starting token as offset
+	offset := 0
+	if req.GetStartingToken() != "" {
+		var err error
+		offset, err = strconv.Atoi(req.GetStartingToken())
+		if err != nil {
+			return nil, status.Errorf(codes.Aborted, "invalid starting token: %v", err)
+		}
+	}
+
+	// Use max entries as limit (default to 100 if not specified or 0)
+	limit := int(req.GetMaxEntries())
+	if limit == 0 {
+		limit = 100
+	}
+
+	snapshots, err := d.truenasClient.SnapshotListAll(ctx, d.config.ZFS.DatasetParentName, limit, offset)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
 	}
@@ -584,8 +623,15 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 		})
 	}
 
+	// Generate next token if we got a full page
+	nextToken := ""
+	if len(snapshots) == limit {
+		nextToken = strconv.Itoa(offset + limit)
+	}
+
 	return &csi.ListSnapshotsResponse{
-		Entries: entries,
+		Entries:   entries,
+		NextToken: nextToken,
 	}, nil
 }
 

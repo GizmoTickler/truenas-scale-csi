@@ -18,7 +18,7 @@ type ClientInterface interface {
 	DatasetDelete(ctx context.Context, name string, recursive bool, force bool) error
 	DatasetGet(ctx context.Context, name string) (*Dataset, error)
 	DatasetUpdate(ctx context.Context, name string, params *DatasetUpdateParams) (*Dataset, error)
-	DatasetList(ctx context.Context, parentName string) ([]*Dataset, error)
+	DatasetList(ctx context.Context, parentName string, limit int, offset int) ([]*Dataset, error)
 	DatasetSetUserProperty(ctx context.Context, name string, key string, value string) error
 	DatasetGetUserProperty(ctx context.Context, name string, key string) (string, error)
 	DatasetExpand(ctx context.Context, name string, newSize int64) error
@@ -29,7 +29,7 @@ type ClientInterface interface {
 	SnapshotDelete(ctx context.Context, snapshotID string, defer_ bool, recursive bool) error
 	SnapshotGet(ctx context.Context, snapshotID string) (*Snapshot, error)
 	SnapshotList(ctx context.Context, dataset string) ([]*Snapshot, error)
-	SnapshotListAll(ctx context.Context, parentDataset string) ([]*Snapshot, error)
+	SnapshotListAll(ctx context.Context, parentDataset string, limit int, offset int) ([]*Snapshot, error)
 	SnapshotFindByName(ctx context.Context, parentDataset string, name string) (*Snapshot, error)
 	SnapshotSetUserProperty(ctx context.Context, snapshotID string, key string, value string) error
 	SnapshotClone(ctx context.Context, snapshotID string, newDatasetName string) error

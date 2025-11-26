@@ -119,7 +119,7 @@ func (m *MockClient) DatasetUpdate(ctx context.Context, name string, params *Dat
 	return ds, nil
 }
 
-func (m *MockClient) DatasetList(ctx context.Context, parentName string) ([]*Dataset, error) {
+func (m *MockClient) DatasetList(ctx context.Context, parentName string, limit int, offset int) ([]*Dataset, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -236,7 +236,7 @@ func (m *MockClient) SnapshotList(ctx context.Context, dataset string) ([]*Snaps
 	return list, nil
 }
 
-func (m *MockClient) SnapshotListAll(ctx context.Context, parentDataset string) ([]*Snapshot, error) {
+func (m *MockClient) SnapshotListAll(ctx context.Context, parentDataset string, limit int, offset int) ([]*Snapshot, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

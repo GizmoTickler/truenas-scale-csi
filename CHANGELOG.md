@@ -1,3 +1,14 @@
+# v2.2.9
+
+Release 2025-11-26
+
+**Advanced Performance Optimizations:**
+- **WebSocket Connection Pooling (PERF-004):** Implemented a connection pool for the TrueNAS client to handle concurrent API requests efficiently, removing the single-connection bottleneck.
+- **API Pagination (PERF-002):** Implemented CSI-compliant pagination for `ListVolumes` and `ListSnapshots` to improve scalability and performance when handling large numbers of resources.
+
+**Bug Fixes:**
+- Fixed an issue where the initial connection error was not correctly captured in the client (found during PERF-004 implementation).
+
 # v2.2.8
 
 Release 2025-11-26

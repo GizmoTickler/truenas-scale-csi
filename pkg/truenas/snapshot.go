@@ -108,10 +108,18 @@ func (c *Client) SnapshotList(ctx context.Context, dataset string) ([]*Snapshot,
 }
 
 // SnapshotListAll lists all snapshots under a parent dataset (recursive).
-func (c *Client) SnapshotListAll(ctx context.Context, parentDataset string) ([]*Snapshot, error) {
+func (c *Client) SnapshotListAll(ctx context.Context, parentDataset string, limit int, offset int) ([]*Snapshot, error) {
 	filters := [][]interface{}{{"dataset", "^", parentDataset}}
 
-	result, err := c.Call(ctx, "zfs.snapshot.query", filters, map[string]interface{}{})
+	options := map[string]interface{}{}
+	if limit > 0 {
+		options["limit"] = limit
+	}
+	if offset > 0 {
+		options["offset"] = offset
+	}
+
+	result, err := c.Call(ctx, "zfs.snapshot.query", filters, options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list snapshots: %w", err)
 	}

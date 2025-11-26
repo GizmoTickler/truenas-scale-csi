@@ -145,7 +145,7 @@ func (c *Client) DatasetUpdate(ctx context.Context, name string, params *Dataset
 }
 
 // DatasetList lists datasets matching the given filters.
-func (c *Client) DatasetList(ctx context.Context, parentName string) ([]*Dataset, error) {
+func (c *Client) DatasetList(ctx context.Context, parentName string, limit int, offset int) ([]*Dataset, error) {
 	var filters [][]interface{}
 	if parentName != "" {
 		filters = [][]interface{}{{"id", "^", parentName + "/"}}
@@ -155,6 +155,13 @@ func (c *Client) DatasetList(ctx context.Context, parentName string) ([]*Dataset
 		"extra": map[string]interface{}{
 			"flat": true,
 		},
+	}
+
+	if limit > 0 {
+		options["limit"] = limit
+	}
+	if offset > 0 {
+		options["offset"] = offset
 	}
 
 	result, err := c.Call(ctx, "pool.dataset.query", filters, options)

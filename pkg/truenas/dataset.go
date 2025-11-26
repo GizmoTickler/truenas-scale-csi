@@ -1,6 +1,7 @@
 package truenas
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -84,12 +85,12 @@ type UserPropertyUpdate struct {
 }
 
 // DatasetCreate creates a new ZFS dataset.
-func (c *Client) DatasetCreate(params *DatasetCreateParams) (*Dataset, error) {
-	result, err := c.Call("pool.dataset.create", params)
+func (c *Client) DatasetCreate(ctx context.Context, params *DatasetCreateParams) (*Dataset, error) {
+	result, err := c.Call(ctx, "pool.dataset.create", params)
 	if err != nil {
 		// Handle "already exists" errors by returning existing dataset (idempotency)
 		if IsAlreadyExistsError(err) {
-			return c.DatasetGet(params.Name)
+			return c.DatasetGet(ctx, params.Name)
 		}
 		return nil, fmt.Errorf("failed to create dataset: %w", err)
 	}
@@ -98,13 +99,13 @@ func (c *Client) DatasetCreate(params *DatasetCreateParams) (*Dataset, error) {
 }
 
 // DatasetDelete deletes a ZFS dataset.
-func (c *Client) DatasetDelete(name string, recursive bool, force bool) error {
+func (c *Client) DatasetDelete(ctx context.Context, name string, recursive bool, force bool) error {
 	options := map[string]interface{}{
 		"recursive": recursive,
 		"force":     force,
 	}
 
-	_, err := c.Call("pool.dataset.delete", name, options)
+	_, err := c.Call(ctx, "pool.dataset.delete", name, options)
 	if err != nil {
 		// Handle "not found" errors as success (idempotency)
 		if IsNotFoundError(err) {
@@ -117,10 +118,10 @@ func (c *Client) DatasetDelete(name string, recursive bool, force bool) error {
 }
 
 // DatasetGet retrieves a dataset by name.
-func (c *Client) DatasetGet(name string) (*Dataset, error) {
+func (c *Client) DatasetGet(ctx context.Context, name string) (*Dataset, error) {
 	filters := [][]interface{}{{"id", "=", name}}
 
-	result, err := c.Call("pool.dataset.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "pool.dataset.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dataset: %w", err)
 	}
@@ -134,8 +135,8 @@ func (c *Client) DatasetGet(name string) (*Dataset, error) {
 }
 
 // DatasetUpdate updates a dataset's properties.
-func (c *Client) DatasetUpdate(name string, params *DatasetUpdateParams) (*Dataset, error) {
-	result, err := c.Call("pool.dataset.update", name, params)
+func (c *Client) DatasetUpdate(ctx context.Context, name string, params *DatasetUpdateParams) (*Dataset, error) {
+	result, err := c.Call(ctx, "pool.dataset.update", name, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update dataset: %w", err)
 	}
@@ -144,7 +145,7 @@ func (c *Client) DatasetUpdate(name string, params *DatasetUpdateParams) (*Datas
 }
 
 // DatasetList lists datasets matching the given filters.
-func (c *Client) DatasetList(parentName string) ([]*Dataset, error) {
+func (c *Client) DatasetList(ctx context.Context, parentName string) ([]*Dataset, error) {
 	var filters [][]interface{}
 	if parentName != "" {
 		filters = [][]interface{}{{"id", "^", parentName + "/"}}
@@ -156,7 +157,7 @@ func (c *Client) DatasetList(parentName string) ([]*Dataset, error) {
 		},
 	}
 
-	result, err := c.Call("pool.dataset.query", filters, options)
+	result, err := c.Call(ctx, "pool.dataset.query", filters, options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list datasets: %w", err)
 	}
@@ -179,20 +180,20 @@ func (c *Client) DatasetList(parentName string) ([]*Dataset, error) {
 }
 
 // DatasetSetUserProperty sets a user property on a dataset.
-func (c *Client) DatasetSetUserProperty(name string, key string, value string) error {
+func (c *Client) DatasetSetUserProperty(ctx context.Context, name string, key string, value string) error {
 	params := &DatasetUpdateParams{
 		UserPropertiesUpdate: []UserPropertyUpdate{
 			{Key: key, Value: value},
 		},
 	}
 
-	_, err := c.DatasetUpdate(name, params)
+	_, err := c.DatasetUpdate(ctx, name, params)
 	return err
 }
 
 // DatasetGetUserProperty gets a user property from a dataset.
-func (c *Client) DatasetGetUserProperty(name string, key string) (string, error) {
-	ds, err := c.DatasetGet(name)
+func (c *Client) DatasetGetUserProperty(ctx context.Context, name string, key string) (string, error) {
+	ds, err := c.DatasetGet(ctx, name)
 	if err != nil {
 		return "", err
 	}
@@ -205,22 +206,22 @@ func (c *Client) DatasetGetUserProperty(name string, key string) (string, error)
 }
 
 // DatasetExpand expands a zvol to the specified size.
-func (c *Client) DatasetExpand(name string, newSize int64) error {
+func (c *Client) DatasetExpand(ctx context.Context, name string, newSize int64) error {
 	params := &DatasetUpdateParams{
 		Volsize: newSize,
 	}
 
-	_, err := c.DatasetUpdate(name, params)
+	_, err := c.DatasetUpdate(ctx, name, params)
 	return err
 }
 
 // GetPoolAvailable returns the available space in a pool.
-func (c *Client) GetPoolAvailable(poolName string) (int64, error) {
+func (c *Client) GetPoolAvailable(ctx context.Context, poolName string) (int64, error) {
 	// Extract pool name from dataset path
 	parts := strings.Split(poolName, "/")
 	pool := parts[0]
 
-	result, err := c.Call("pool.query", [][]interface{}{{"name", "=", pool}}, map[string]interface{}{})
+	result, err := c.Call(ctx, "pool.query", [][]interface{}{{"name", "=", pool}}, map[string]interface{}{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to query pool: %w", err)
 	}
@@ -254,7 +255,7 @@ func (c *Client) GetPoolAvailable(poolName string) (int64, error) {
 	}
 
 	// Fallback: use dataset query on pool root
-	ds, err := c.DatasetGet(pool)
+	ds, err := c.DatasetGet(ctx, pool)
 	if err != nil {
 		return 0, err
 	}

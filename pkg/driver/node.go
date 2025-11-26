@@ -155,9 +155,22 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	// Unmount staging path
 	if err := util.Unmount(stagingPath); err != nil {
 		klog.Warningf("Failed to unmount staging path: %v", err)
+		// BUG-003 fix: Check if still mounted before attempting removal
+		// to prevent data corruption from removing mounted directories
+		mounted, checkErr := util.IsMounted(stagingPath)
+		if checkErr != nil {
+			klog.Warningf("Failed to check mount status after unmount failure: %v", checkErr)
+			// If we can't verify mount status, don't risk removing a mounted path
+			return nil, status.Errorf(codes.Internal, "failed to unmount staging path and cannot verify mount status: %v", err)
+		}
+		if mounted {
+			return nil, status.Errorf(codes.Internal, "failed to unmount staging path (still mounted): %v", err)
+		}
+		// Not mounted, safe to continue with cleanup
+		klog.Infof("Staging path %s is not mounted, proceeding with cleanup", stagingPath)
 	}
 
-	// Clean up staging directory
+	// Clean up staging directory (only reached if unmount succeeded or path was not mounted)
 	if err := os.RemoveAll(stagingPath); err != nil {
 		klog.Warningf("Failed to remove staging directory: %v", err)
 	}
@@ -303,9 +316,19 @@ func (d *Driver) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublish
 	// Unmount target path
 	if err := util.Unmount(targetPath); err != nil {
 		klog.Warningf("Failed to unmount target path: %v", err)
+		// BUG-003 fix: Check if still mounted before attempting removal
+		mounted, checkErr := util.IsMounted(targetPath)
+		if checkErr != nil {
+			klog.Warningf("Failed to check mount status after unmount failure: %v", checkErr)
+			return nil, status.Errorf(codes.Internal, "failed to unmount target path and cannot verify mount status: %v", err)
+		}
+		if mounted {
+			return nil, status.Errorf(codes.Internal, "failed to unmount target path (still mounted): %v", err)
+		}
+		klog.Infof("Target path %s is not mounted, proceeding with cleanup", targetPath)
 	}
 
-	// Remove target path
+	// Remove target path (only reached if unmount succeeded or path was not mounted)
 	if err := os.RemoveAll(targetPath); err != nil {
 		klog.Warningf("Failed to remove target path: %v", err)
 	}
@@ -497,9 +520,12 @@ func (d *Driver) stageNVMeoFVolume(ctx context.Context, volumeContext map[string
 		port = "4420"
 	}
 
-	// Connect to NVMe-oF subsystem
+	// Connect to NVMe-oF subsystem with configurable timeout (OTHER-001 fix)
 	transportURI := fmt.Sprintf("%s://%s:%s", transport, address, port)
-	devicePath, err := util.NVMeoFConnect(nqn, transportURI)
+	connectOpts := &util.NVMeoFConnectOptions{
+		DeviceTimeout: time.Duration(d.config.NVMeoF.DeviceWaitTimeout) * time.Second,
+	}
+	devicePath, err := util.NVMeoFConnectWithOptions(nqn, transportURI, connectOpts)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to connect NVMe-oF: %v", err)
 	}

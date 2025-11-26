@@ -1,0 +1,54 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: truenas-nfs
+provisioner: org.truenas.csi
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+parameters:
+  protocol: "nfs"
+  # NFS export options
+  nfsOptions: "rw,async,no_subtree_check,no_root_squash"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: csi-nfs-smoke-test-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany  # NFS supports RWX
+  storageClassName: truenas-nfs
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-smoke-test-pod
+  namespace: default
+spec:
+  containers:
+    - name: test
+      image: busybox:latest
+      command:
+        - sh
+        - -c
+        - |
+          echo "Starting NFS smoke test..."
+          echo "Writing test data to /data/test.txt"
+          date > /data/test.txt
+          echo "Test data written successfully"
+          echo "Verifying test data..."
+          cat /data/test.txt
+          echo "NFS smoke test completed successfully!"
+          sleep 3600
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: csi-nfs-smoke-test-pvc

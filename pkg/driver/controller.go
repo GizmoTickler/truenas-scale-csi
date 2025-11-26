@@ -147,27 +147,37 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	klog.Infof("CreateVolume: using share type %s for volume %s", shareType, volumeID)
 
 	// Check if volume already exists
-	existingDS, err := d.truenasClient.DatasetGet(datasetName)
+	// Check if volume already exists
+	existingDS, err := d.truenasClient.DatasetGet(ctx, datasetName)
 	if err == nil && existingDS != nil {
 		// Volume exists - check and ensure properties are set
 		klog.Infof("Volume %s already exists", volumeID)
 
 		// Ensure properties are set (idempotent)
-		g, _ := errgroup.WithContext(ctx)
+		g, gCtx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropManagedResource, "true"); err != nil {
+			if prop, ok := existingDS.UserProperties[PropManagedResource]; ok && prop.Value == "true" {
+				return nil
+			}
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropManagedResource, "true"); err != nil {
 				return fmt.Errorf("failed to set managed resource property: %w", err)
 			}
 			return nil
 		})
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropProvisionSuccess, "true"); err != nil {
+			if prop, ok := existingDS.UserProperties[PropProvisionSuccess]; ok && prop.Value == "true" {
+				return nil
+			}
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropProvisionSuccess, "true"); err != nil {
 				return fmt.Errorf("failed to set provision success property: %w", err)
 			}
 			return nil
 		})
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropCSIVolumeName, name); err != nil {
+			if prop, ok := existingDS.UserProperties[PropCSIVolumeName]; ok && prop.Value == name {
+				return nil
+			}
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropCSIVolumeName, name); err != nil {
 				return fmt.Errorf("failed to set CSI volume name property: %w", err)
 			}
 			return nil
@@ -178,7 +188,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			return nil, status.Errorf(codes.Internal, "failed to ensure volume properties: %v", err)
 		}
 
-		volumeContext, err := d.getVolumeContext(datasetName, shareType)
+		volumeContext, err := d.getVolumeContext(ctx, datasetName, shareType)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get volume context: %v", err)
 		}
@@ -208,28 +218,28 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	// Create share (NFS, iSCSI, or NVMe-oF)
 	if err := d.createShare(ctx, datasetName, name, shareType); err != nil {
 		// Cleanup on failure
-		if delErr := d.truenasClient.DatasetDelete(datasetName, false, false); delErr != nil {
+		if delErr := d.truenasClient.DatasetDelete(ctx, datasetName, false, false); delErr != nil {
 			klog.Warningf("Failed to cleanup dataset after share creation failure: %v", delErr)
 		}
 		return nil, err
 	}
 
 	// Mark as managed and successful - run property sets in parallel
-	g, _ := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropManagedResource, "true"); err != nil {
+		if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropManagedResource, "true"); err != nil {
 			return fmt.Errorf("failed to set managed resource property: %w", err)
 		}
 		return nil
 	})
 	g.Go(func() error {
-		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropProvisionSuccess, "true"); err != nil {
+		if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropProvisionSuccess, "true"); err != nil {
 			return fmt.Errorf("failed to set provision success property: %w", err)
 		}
 		return nil
 	})
 	g.Go(func() error {
-		if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropCSIVolumeName, name); err != nil {
+		if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropCSIVolumeName, name); err != nil {
 			return fmt.Errorf("failed to set CSI volume name property: %w", err)
 		}
 		return nil
@@ -242,7 +252,7 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 	}
 
 	// Get volume context for response
-	volumeContext, err := d.getVolumeContext(datasetName, shareType)
+	volumeContext, err := d.getVolumeContext(ctx, datasetName, shareType)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get volume context: %v", err)
 	}
@@ -278,7 +288,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
 
 	// Check if volume exists (idempotency - return success if already deleted)
-	ds, err := d.truenasClient.DatasetGet(datasetName)
+	ds, err := d.truenasClient.DatasetGet(ctx, datasetName)
 	if err != nil {
 		if truenas.IsNotFoundError(err) {
 			klog.Infof("Volume %s already deleted or does not exist", volumeID)
@@ -311,7 +321,7 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 	}
 
 	// Delete dataset (recursive to handle snapshots, force to ignore busy state)
-	if err := d.truenasClient.DatasetDelete(datasetName, true, true); err != nil {
+	if err := d.truenasClient.DatasetDelete(ctx, datasetName, true, true); err != nil {
 		// DatasetDelete already handles "not found" errors, so this is a real error
 		klog.Errorf("Failed to delete dataset for volume %s: %v", volumeID, err)
 		return nil, status.Errorf(codes.Internal, "failed to delete volume: %v", err)
@@ -348,7 +358,7 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 
 	// Check volume exists
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
-	_, err := d.truenasClient.DatasetGet(datasetName)
+	_, err := d.truenasClient.DatasetGet(ctx, datasetName)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "volume not found: %s", volumeID)
 	}
@@ -367,7 +377,7 @@ func (d *Driver) ValidateVolumeCapabilities(ctx context.Context, req *csi.Valida
 func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	klog.V(4).Info("ListVolumes called")
 
-	datasets, err := d.truenasClient.DatasetList(d.config.ZFS.DatasetParentName)
+	datasets, err := d.truenasClient.DatasetList(ctx, d.config.ZFS.DatasetParentName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list volumes: %v", err)
 	}
@@ -399,7 +409,7 @@ func (d *Driver) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (
 func (d *Driver) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	klog.V(4).Info("GetCapacity called")
 
-	available, err := d.truenasClient.GetPoolAvailable(d.config.ZFS.DatasetParentName)
+	available, err := d.truenasClient.GetPoolAvailable(ctx, d.config.ZFS.DatasetParentName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get capacity: %v", err)
 	}
@@ -434,28 +444,28 @@ func (d *Driver) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequ
 	snapshotID := d.sanitizeVolumeID(name)
 
 	// Create snapshot
-	snap, err := d.truenasClient.SnapshotCreate(datasetName, snapshotID)
+	snap, err := d.truenasClient.SnapshotCreate(ctx, datasetName, snapshotID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create snapshot: %v", err)
 	}
 
 	// Set snapshot properties in parallel
 	// Set snapshot properties in parallel
-	g, _ := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		if err := d.truenasClient.SnapshotSetUserProperty(snap.ID, PropManagedResource, "true"); err != nil {
+		if err := d.truenasClient.SnapshotSetUserProperty(gCtx, snap.ID, PropManagedResource, "true"); err != nil {
 			return fmt.Errorf("failed to set managed resource property on snapshot: %w", err)
 		}
 		return nil
 	})
 	g.Go(func() error {
-		if err := d.truenasClient.SnapshotSetUserProperty(snap.ID, PropCSISnapshotName, name); err != nil {
+		if err := d.truenasClient.SnapshotSetUserProperty(gCtx, snap.ID, PropCSISnapshotName, name); err != nil {
 			return fmt.Errorf("failed to set CSI snapshot name property: %w", err)
 		}
 		return nil
 	})
 	g.Go(func() error {
-		if err := d.truenasClient.SnapshotSetUserProperty(snap.ID, PropCSISnapshotSourceVolumeID, sourceVolumeID); err != nil {
+		if err := d.truenasClient.SnapshotSetUserProperty(gCtx, snap.ID, PropCSISnapshotSourceVolumeID, sourceVolumeID); err != nil {
 			return fmt.Errorf("failed to set CSI snapshot source volume ID property: %w", err)
 		}
 		return nil
@@ -494,41 +504,32 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 	}
 	defer d.releaseOperationLock(lockKey)
 
-	// Find and delete the snapshot
-	// Snapshot ID format: dataset@snapshotname
-	snapshots, err := d.truenasClient.SnapshotListAll(d.config.ZFS.DatasetParentName)
+	// Find and delete the snapshot using efficient query (PERF-001 fix)
+	snap, err := d.truenasClient.SnapshotFindByName(ctx, d.config.ZFS.DatasetParentName, snapshotID)
 	if err != nil {
-		// If we can't list snapshots due to connection issue, return error
 		// If parent dataset doesn't exist, the snapshot is effectively deleted
 		if truenas.IsNotFoundError(err) {
 			klog.Infof("Snapshot %s parent not found, treating as deleted", snapshotID)
 			return &csi.DeleteSnapshotResponse{}, nil
 		}
-		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to find snapshot: %v", err)
 	}
 
-	found := false
-	for _, snap := range snapshots {
-		snapName := path.Base(strings.Split(snap.ID, "@")[1])
-		if snapName == snapshotID {
-			found = true
-			if err := d.truenasClient.SnapshotDelete(snap.ID, false, false); err != nil {
-				// Handle "not found" as success (idempotency)
-				if truenas.IsNotFoundError(err) {
-					klog.Infof("Snapshot %s already deleted", snapshotID)
-					break
-				}
-				klog.Errorf("Failed to delete snapshot %s: %v", snapshotID, err)
-				return nil, status.Errorf(codes.Internal, "failed to delete snapshot: %v", err)
-			}
-			klog.Infof("Snapshot %s deleted successfully", snapshotID)
-			break
-		}
-	}
-
-	if !found {
+	if snap == nil {
 		klog.Infof("Snapshot %s not found, treating as already deleted", snapshotID)
+		return &csi.DeleteSnapshotResponse{}, nil
 	}
+
+	if err := d.truenasClient.SnapshotDelete(ctx, snap.ID, false, false); err != nil {
+		// Handle "not found" as success (idempotency)
+		if truenas.IsNotFoundError(err) {
+			klog.Infof("Snapshot %s already deleted", snapshotID)
+			return &csi.DeleteSnapshotResponse{}, nil
+		}
+		klog.Errorf("Failed to delete snapshot %s: %v", snapshotID, err)
+		return nil, status.Errorf(codes.Internal, "failed to delete snapshot: %v", err)
+	}
+	klog.Infof("Snapshot %s deleted successfully", snapshotID)
 
 	return &csi.DeleteSnapshotResponse{}, nil
 }
@@ -537,7 +538,7 @@ func (d *Driver) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequ
 func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	klog.V(4).Info("ListSnapshots called")
 
-	snapshots, err := d.truenasClient.SnapshotListAll(d.config.ZFS.DatasetParentName)
+	snapshots, err := d.truenasClient.SnapshotListAll(ctx, d.config.ZFS.DatasetParentName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list snapshots: %v", err)
 	}
@@ -549,10 +550,16 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 			continue
 		}
 
+		// Extract snapshot name safely (BUG-002 fix)
+		snapshotID, ok := extractSnapshotName(snap.ID)
+		if !ok {
+			klog.V(4).Infof("Skipping snapshot with invalid ID format: %s", snap.ID)
+			continue
+		}
+
 		// Filter by snapshot ID if specified
 		if req.GetSnapshotId() != "" {
-			snapName := path.Base(strings.Split(snap.ID, "@")[1])
-			if snapName != req.GetSnapshotId() {
+			if snapshotID != req.GetSnapshotId() {
 				continue
 			}
 		}
@@ -566,7 +573,6 @@ func (d *Driver) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsReques
 			continue
 		}
 
-		snapshotID := path.Base(strings.Split(snap.ID, "@")[1])
 		entries = append(entries, &csi.ListSnapshotsResponse_Entry{
 			Snapshot: &csi.Snapshot{
 				SnapshotId:     snapshotID,
@@ -597,11 +603,18 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 
 	klog.Infof("ControllerExpandVolume: volumeID=%s, capacity=%d", volumeID, capacityBytes)
 
+	// Lock on volume ID (OTHER-004 fix: prevent concurrent expansions of same volume)
+	lockKey := "volume:" + volumeID
+	if !d.acquireOperationLock(lockKey) {
+		return nil, status.Error(codes.Aborted, "operation already in progress for this volume")
+	}
+	defer d.releaseOperationLock(lockKey)
+
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
 
 	// For zvols (iSCSI/NVMe-oF), expand the volsize
 	if d.config.GetZFSResourceType() == "volume" {
-		if err := d.truenasClient.DatasetExpand(datasetName, capacityBytes); err != nil {
+		if err := d.truenasClient.DatasetExpand(ctx, datasetName, capacityBytes); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to expand volume: %v", err)
 		}
 	}
@@ -611,7 +624,7 @@ func (d *Driver) ControllerExpandVolume(ctx context.Context, req *csi.Controller
 		params := &truenas.DatasetUpdateParams{
 			Refquota: capacityBytes,
 		}
-		if _, err := d.truenasClient.DatasetUpdate(datasetName, params); err != nil {
+		if _, err := d.truenasClient.DatasetUpdate(ctx, datasetName, params); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to update quota: %v", err)
 		}
 	}
@@ -635,7 +648,7 @@ func (d *Driver) ControllerGetVolume(ctx context.Context, req *csi.ControllerGet
 	}
 
 	datasetName := path.Join(d.config.ZFS.DatasetParentName, volumeID)
-	ds, err := d.truenasClient.DatasetGet(datasetName)
+	ds, err := d.truenasClient.DatasetGet(ctx, datasetName)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "volume not found: %s", volumeID)
 	}
@@ -719,7 +732,7 @@ func (d *Driver) createDataset(ctx context.Context, datasetName string, capacity
 		params.Sparse = true
 	}
 
-	_, err := d.truenasClient.DatasetCreate(params)
+	_, err := d.truenasClient.DatasetCreate(ctx, params)
 	return err
 }
 
@@ -728,44 +741,39 @@ func (d *Driver) handleVolumeContentSource(ctx context.Context, datasetName stri
 		// Clone from snapshot
 		snapshotID := snapshot.GetSnapshotId()
 
-		// Find the snapshot
-		snapshots, err := d.truenasClient.SnapshotListAll(d.config.ZFS.DatasetParentName)
+		// Find the snapshot using efficient query (PERF-001 fix)
+		snap, err := d.truenasClient.SnapshotFindByName(ctx, d.config.ZFS.DatasetParentName, snapshotID)
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to find snapshot: %v", err)
 		}
 
-		var sourceSnapshot string
-		for _, snap := range snapshots {
-			snapName := path.Base(strings.Split(snap.ID, "@")[1])
-			if snapName == snapshotID {
-				sourceSnapshot = snap.ID
-				break
-			}
-		}
-
-		if sourceSnapshot == "" {
+		if snap == nil {
 			return status.Errorf(codes.NotFound, "snapshot not found: %s", snapshotID)
 		}
 
-		if err := d.truenasClient.SnapshotClone(sourceSnapshot, datasetName); err != nil {
+		sourceSnapshot := snap.ID
+
+		if err := d.truenasClient.SnapshotClone(ctx, sourceSnapshot, datasetName); err != nil {
 			return status.Errorf(codes.Internal, "failed to clone snapshot: %v", err)
 		}
 
-		// Set content source properties in parallel
-		g, _ := errgroup.WithContext(ctx)
+		// Set content source properties in parallel (BUG-004 fix: log errors from Wait)
+		g, gCtx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceType, "snapshot"); err != nil {
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropVolumeContentSourceType, "snapshot"); err != nil {
 				klog.Warningf("Failed to set volume content source type property: %v", err)
 			}
 			return nil
 		})
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceID, snapshotID); err != nil {
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropVolumeContentSourceID, snapshotID); err != nil {
 				klog.Warningf("Failed to set volume content source ID property: %v", err)
 			}
 			return nil
 		})
-		_ = g.Wait()
+		if err := g.Wait(); err != nil {
+			klog.Warningf("Error setting content source properties for snapshot clone: %v", err)
+		}
 
 	} else if volume := source.GetVolume(); volume != nil {
 		// Clone from volume
@@ -774,44 +782,46 @@ func (d *Driver) handleVolumeContentSource(ctx context.Context, datasetName stri
 
 		// Create a snapshot of source volume, then clone it
 		tempSnapshotName := fmt.Sprintf("clone-source-%s", d.sanitizeVolumeID(path.Base(datasetName)))
-		snap, err := d.truenasClient.SnapshotCreate(sourceDataset, tempSnapshotName)
+		snap, err := d.truenasClient.SnapshotCreate(ctx, sourceDataset, tempSnapshotName)
 		if err != nil {
 			return status.Errorf(codes.Internal, "failed to create source snapshot: %v", err)
 		}
 
-		if err := d.truenasClient.SnapshotClone(snap.ID, datasetName); err != nil {
-			if delErr := d.truenasClient.SnapshotDelete(snap.ID, false, false); delErr != nil {
+		if err := d.truenasClient.SnapshotClone(ctx, snap.ID, datasetName); err != nil {
+			if delErr := d.truenasClient.SnapshotDelete(ctx, snap.ID, false, false); delErr != nil {
 				klog.Warningf("Failed to cleanup snapshot after clone failure: %v", delErr)
 			}
 			return status.Errorf(codes.Internal, "failed to clone volume: %v", err)
 		}
 
-		// Set content source properties in parallel
-		g, _ := errgroup.WithContext(ctx)
+		// Set content source properties in parallel (BUG-004 fix: log errors from Wait)
+		g, gCtx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceType, "volume"); err != nil {
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropVolumeContentSourceType, "volume"); err != nil {
 				klog.Warningf("Failed to set volume content source type property: %v", err)
 			}
 			return nil
 		})
 		g.Go(func() error {
-			if err := d.truenasClient.DatasetSetUserProperty(datasetName, PropVolumeContentSourceID, sourceVolumeID); err != nil {
+			if err := d.truenasClient.DatasetSetUserProperty(gCtx, datasetName, PropVolumeContentSourceID, sourceVolumeID); err != nil {
 				klog.Warningf("Failed to set volume content source ID property: %v", err)
 			}
 			return nil
 		})
-		_ = g.Wait()
+		if err := g.Wait(); err != nil {
+			klog.Warningf("Error setting content source properties for volume clone: %v", err)
+		}
 	}
 
 	return nil
 }
 
-func (d *Driver) getVolumeContext(datasetName string, shareType string) (map[string]string, error) {
+func (d *Driver) getVolumeContext(ctx context.Context, datasetName string, shareType string) (map[string]string, error) {
 	context := map[string]string{
 		"node_attach_driver": shareType,
 	}
 
-	ds, err := d.truenasClient.DatasetGet(datasetName)
+	ds, err := d.truenasClient.DatasetGet(ctx, datasetName)
 	if err != nil {
 		return nil, err
 	}
@@ -828,11 +838,11 @@ func (d *Driver) getVolumeContext(datasetName string, shareType string) (map[str
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "invalid target ID: %v", err)
 			}
-			target, err := d.truenasClient.ISCSITargetGet(targetID)
+			target, err := d.truenasClient.ISCSITargetGet(ctx, targetID)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to get iSCSI target: %v", err)
 			}
-			globalCfg, err := d.truenasClient.ISCSIGlobalConfigGet()
+			globalCfg, err := d.truenasClient.ISCSIGlobalConfigGet(ctx)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to get iSCSI global config: %v", err)
 			}
@@ -849,7 +859,7 @@ func (d *Driver) getVolumeContext(datasetName string, shareType string) (map[str
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "invalid subsystem ID: %v", err)
 			}
-			subsys, err := d.truenasClient.NVMeoFSubsystemGet(subsysID)
+			subsys, err := d.truenasClient.NVMeoFSubsystemGet(ctx, subsysID)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to get NVMe-oF subsystem: %v", err)
 			}
@@ -867,4 +877,16 @@ func timestampProto(unixSeconds int64) *timestamppb.Timestamp {
 	return &timestamppb.Timestamp{
 		Seconds: unixSeconds,
 	}
+}
+
+// extractSnapshotName safely extracts the snapshot name from a ZFS snapshot ID.
+// ZFS snapshot IDs are in format "dataset@snapshotname".
+// Returns the snapshot name and true if valid, empty string and false if invalid.
+// (BUG-002 fix: prevents panic on invalid snapshot ID format)
+func extractSnapshotName(snapshotID string) (string, bool) {
+	parts := strings.Split(snapshotID, "@")
+	if len(parts) != 2 {
+		return "", false
+	}
+	return path.Base(parts[1]), true
 }

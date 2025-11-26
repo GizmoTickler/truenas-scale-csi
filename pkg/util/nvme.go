@@ -40,9 +40,30 @@ type NVMeNamespace struct {
 	SectorSize   int   `json:"SectorSize"`
 }
 
+// DefaultNVMeoFDeviceTimeout is the default timeout for waiting for NVMe-oF devices to appear.
+const DefaultNVMeoFDeviceTimeout = 60 * time.Second
+
+// NVMeoFConnectOptions holds options for NVMe-oF connection.
+// (OTHER-001 fix: make NVMe-oF timeout configurable like iSCSI)
+type NVMeoFConnectOptions struct {
+	DeviceTimeout time.Duration // Timeout for waiting for device to appear (default: 60s)
+}
+
 // NVMeoFConnect connects to an NVMe-oF target and returns the device path.
 func NVMeoFConnect(nqn, transportURI string) (string, error) {
+	return NVMeoFConnectWithOptions(nqn, transportURI, nil)
+}
+
+// NVMeoFConnectWithOptions connects to an NVMe-oF target with configurable options.
+// (OTHER-001 fix: make NVMe-oF timeout configurable like iSCSI)
+func NVMeoFConnectWithOptions(nqn, transportURI string, opts *NVMeoFConnectOptions) (string, error) {
 	klog.V(4).Infof("NVMeoFConnect: nqn=%s, transportURI=%s", nqn, transportURI)
+
+	// Apply defaults (OTHER-001 fix)
+	timeout := DefaultNVMeoFDeviceTimeout
+	if opts != nil && opts.DeviceTimeout > 0 {
+		timeout = opts.DeviceTimeout
+	}
 
 	// Parse the transport URI
 	// Format: tcp://host:port or rdma://host:port
@@ -56,8 +77,8 @@ func NVMeoFConnect(nqn, transportURI string) (string, error) {
 		return "", fmt.Errorf("connect failed: %w", err)
 	}
 
-	// Wait for device to appear
-	devicePath, err := waitForNVMeDevice(nqn, 30*time.Second)
+	// Wait for device to appear with configurable timeout (OTHER-001 fix)
+	devicePath, err := waitForNVMeDevice(nqn, timeout)
 	if err != nil {
 		return "", fmt.Errorf("device not found: %w", err)
 	}
@@ -173,26 +194,36 @@ func listNVMeSubsystems() ([]NVMeSubsystem, error) {
 }
 
 // waitForNVMeDevice waits for the NVMe device to appear.
+// Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
+// (OTHER-003 fix: check timeout before waiting, use exponential backoff like iSCSI)
 func waitForNVMeDevice(nqn string, timeout time.Duration) (string, error) {
 	start := time.Now()
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	pollInterval := 50 * time.Millisecond
+	maxPollInterval := 500 * time.Millisecond
 
-	for range ticker.C {
+	for {
+		// Check timeout first before waiting (OTHER-003 fix)
+		if time.Since(start) > timeout {
+			return "", fmt.Errorf("timeout waiting for device (nqn=%s)", nqn)
+		}
+
 		devicePath, err := findNVMeDevice(nqn)
 		if err == nil && devicePath != "" {
 			return devicePath, nil
 		}
 
-		if time.Since(start) > timeout {
-			return "", fmt.Errorf("timeout waiting for device (nqn=%s)", nqn)
+		time.Sleep(pollInterval)
+		// Exponential backoff: 50ms -> 100ms -> 200ms -> 400ms -> 500ms (max)
+		pollInterval *= 2
+		if pollInterval > maxPollInterval {
+			pollInterval = maxPollInterval
 		}
 	}
-	return "", fmt.Errorf("ticker stopped unexpectedly")
 }
 
 // findNVMeDevice finds the device path for an NVMe subsystem.
-func findNVMeDevice(nqn string) (string, error) {
+// Variable for testability.
+var findNVMeDevice = func(nqn string) (string, error) {
 	// Look in /sys/class/nvme-subsystem
 	subsysDirs, err := filepath.Glob("/sys/class/nvme-subsystem/nvme-subsys*")
 	if err != nil {

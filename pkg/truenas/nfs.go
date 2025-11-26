@@ -1,6 +1,7 @@
 package truenas
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -38,16 +39,16 @@ type NFSShareCreateParams struct {
 }
 
 // NFSShareCreate creates a new NFS share.
-func (c *Client) NFSShareCreate(params *NFSShareCreateParams) (*NFSShare, error) {
+func (c *Client) NFSShareCreate(ctx context.Context, params *NFSShareCreateParams) (*NFSShare, error) {
 	// Set default enabled to true
 	params.Enabled = true
 
-	result, err := c.Call("sharing.nfs.create", params)
+	result, err := c.Call(ctx, "sharing.nfs.create", params)
 	if err != nil {
 		// Handle "already exports" error by finding existing share
 		if strings.Contains(err.Error(), "already exports") ||
 			strings.Contains(err.Error(), "already shared") {
-			existing, findErr := c.NFSShareFindByPath(params.Path)
+			existing, findErr := c.NFSShareFindByPath(ctx, params.Path)
 			if findErr == nil && existing != nil {
 				return existing, nil
 			}
@@ -59,8 +60,8 @@ func (c *Client) NFSShareCreate(params *NFSShareCreateParams) (*NFSShare, error)
 }
 
 // NFSShareDelete deletes an NFS share by ID.
-func (c *Client) NFSShareDelete(id int) error {
-	_, err := c.Call("sharing.nfs.delete", id)
+func (c *Client) NFSShareDelete(ctx context.Context, id int) error {
+	_, err := c.Call(ctx, "sharing.nfs.delete", id)
 	if err != nil {
 		// Ignore "does not exist" errors
 		if strings.Contains(err.Error(), "does not exist") ||
@@ -74,10 +75,10 @@ func (c *Client) NFSShareDelete(id int) error {
 }
 
 // NFSShareGet retrieves an NFS share by ID.
-func (c *Client) NFSShareGet(id int) (*NFSShare, error) {
+func (c *Client) NFSShareGet(ctx context.Context, id int) (*NFSShare, error) {
 	filters := [][]interface{}{{"id", "=", id}}
 
-	result, err := c.Call("sharing.nfs.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "sharing.nfs.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get NFS share: %w", err)
 	}
@@ -91,8 +92,11 @@ func (c *Client) NFSShareGet(id int) (*NFSShare, error) {
 }
 
 // NFSShareFindByPath finds an NFS share by path.
-func (c *Client) NFSShareFindByPath(path string) (*NFSShare, error) {
-	result, err := c.Call("sharing.nfs.query", []interface{}{}, map[string]interface{}{})
+// Uses API filtering for efficiency instead of fetching all shares (PERF-003 fix).
+func (c *Client) NFSShareFindByPath(ctx context.Context, path string) (*NFSShare, error) {
+	// Use API filter to search by path
+	filters := [][]interface{}{{"path", "=", path}}
+	result, err := c.Call(ctx, "sharing.nfs.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query NFS shares: %w", err)
 	}
@@ -102,15 +106,28 @@ func (c *Client) NFSShareFindByPath(path string) (*NFSShare, error) {
 		return nil, fmt.Errorf("unexpected response format")
 	}
 
+	// If found by primary path, return it
+	if len(shares) > 0 {
+		return parseNFSShare(shares[0])
+	}
+
+	// Fallback: check paths array (for multi-path shares)
+	// TrueNAS API may store path in "paths" array instead of "path" field
+	// This requires fetching all shares since "paths" is an array field
+	result, err = c.Call(ctx, "sharing.nfs.query", []interface{}{}, map[string]interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query NFS shares: %w", err)
+	}
+
+	shares, ok = result.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected response format")
+	}
+
 	for _, item := range shares {
 		share, err := parseNFSShare(item)
 		if err != nil {
 			continue
-		}
-
-		// Check primary path
-		if share.Path == path {
-			return share, nil
 		}
 
 		// Check paths array (for multi-path shares)
@@ -125,8 +142,8 @@ func (c *Client) NFSShareFindByPath(path string) (*NFSShare, error) {
 }
 
 // NFSShareList lists all NFS shares.
-func (c *Client) NFSShareList() ([]*NFSShare, error) {
-	result, err := c.Call("sharing.nfs.query", []interface{}{}, map[string]interface{}{})
+func (c *Client) NFSShareList(ctx context.Context) ([]*NFSShare, error) {
+	result, err := c.Call(ctx, "sharing.nfs.query", []interface{}{}, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list NFS shares: %w", err)
 	}
@@ -149,8 +166,8 @@ func (c *Client) NFSShareList() ([]*NFSShare, error) {
 }
 
 // NFSShareUpdate updates an NFS share.
-func (c *Client) NFSShareUpdate(id int, params map[string]interface{}) (*NFSShare, error) {
-	result, err := c.Call("sharing.nfs.update", id, params)
+func (c *Client) NFSShareUpdate(ctx context.Context, id int, params map[string]interface{}) (*NFSShare, error) {
+	result, err := c.Call(ctx, "sharing.nfs.update", id, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update NFS share: %w", err)
 	}

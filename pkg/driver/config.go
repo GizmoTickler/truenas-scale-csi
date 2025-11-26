@@ -183,6 +183,10 @@ type NVMeoFConfig struct {
 
 	// SubsystemHosts is a list of allowed host NQNs
 	SubsystemHosts []string `yaml:"subsystemHosts"`
+
+	// DeviceWaitTimeout is the timeout for waiting for NVMe-oF devices to appear in seconds (default: 60)
+	// (OTHER-001 fix: make NVMe-oF timeout configurable like iSCSI)
+	DeviceWaitTimeout int `yaml:"deviceWaitTimeout"`
 }
 
 // LoadConfig loads configuration from a YAML file.
@@ -237,6 +241,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.NVMeoF.TransportServiceID == 0 {
 		cfg.NVMeoF.TransportServiceID = 4420
+	}
+	if cfg.NVMeoF.DeviceWaitTimeout == 0 {
+		cfg.NVMeoF.DeviceWaitTimeout = 60 // Default 60 seconds (OTHER-001 fix)
 	}
 
 	// Validate required fields

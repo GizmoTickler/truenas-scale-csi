@@ -115,6 +115,11 @@ type Client struct {
 	// Heartbeat management (fixes silent disconnects)
 	heartbeatDone chan struct{}
 	lastPong      int64 // atomic unix timestamp
+
+	// Safe channel closure (BUG-001 fix: prevents race condition on channel close)
+	closeMu             sync.Mutex
+	writeLoopDoneClosed bool
+	heartbeatDoneClosed bool
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.
@@ -299,6 +304,12 @@ func (c *Client) connectWithRetry() error {
 		c.heartbeatDone = make(chan struct{})
 		c.mu.Unlock()
 
+		// Reset channel closure flags for new connection (BUG-001 fix)
+		c.closeMu.Lock()
+		c.writeLoopDoneClosed = false
+		c.heartbeatDoneClosed = false
+		c.closeMu.Unlock()
+
 		// Start message reader goroutine
 		go c.readMessages()
 
@@ -338,17 +349,17 @@ func (c *Client) cleanupConnection() {
 	c.authenticated = false
 	c.mu.Unlock()
 
-	// Signal goroutines to stop
-	select {
-	case <-c.writeLoopDone:
-	default:
+	// Signal goroutines to stop (BUG-001 fix: safe channel closure with mutex)
+	c.closeMu.Lock()
+	if !c.writeLoopDoneClosed {
 		close(c.writeLoopDone)
+		c.writeLoopDoneClosed = true
 	}
-	select {
-	case <-c.heartbeatDone:
-	default:
+	if !c.heartbeatDoneClosed {
 		close(c.heartbeatDone)
+		c.heartbeatDoneClosed = true
 	}
+	c.closeMu.Unlock()
 }
 
 // authenticateDirect performs API key authentication using direct write.
@@ -532,17 +543,17 @@ func (c *Client) handleDisconnect() {
 		_ = conn.Close()
 	}
 
-	// Stop write loop and heartbeat
-	select {
-	case <-c.writeLoopDone:
-	default:
+	// Stop write loop and heartbeat (BUG-001 fix: safe channel closure with mutex)
+	c.closeMu.Lock()
+	if !c.writeLoopDoneClosed {
 		close(c.writeLoopDone)
+		c.writeLoopDoneClosed = true
 	}
-	select {
-	case <-c.heartbeatDone:
-	default:
+	if !c.heartbeatDoneClosed {
 		close(c.heartbeatDone)
+		c.heartbeatDoneClosed = true
 	}
+	c.closeMu.Unlock()
 
 	// Cancel all pending requests
 	c.pendingMu.Lock()
@@ -566,9 +577,7 @@ func (c *Client) handleDisconnect() {
 }
 
 // Call makes a JSON-RPC call to the TrueNAS API.
-func (c *Client) Call(method string, params ...interface{}) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout)
-	defer cancel()
+func (c *Client) Call(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
 	return c.CallWithContext(ctx, method, params...)
 }
 
@@ -667,17 +676,17 @@ func (c *Client) Close() error {
 	// Update state
 	atomic.StoreInt32(&c.connState, int32(stateDisconnected))
 
-	// Stop goroutines
-	select {
-	case <-c.writeLoopDone:
-	default:
+	// Stop goroutines (BUG-001 fix: safe channel closure with mutex)
+	c.closeMu.Lock()
+	if !c.writeLoopDoneClosed {
 		close(c.writeLoopDone)
+		c.writeLoopDoneClosed = true
 	}
-	select {
-	case <-c.heartbeatDone:
-	default:
+	if !c.heartbeatDoneClosed {
 		close(c.heartbeatDone)
+		c.heartbeatDoneClosed = true
 	}
+	c.closeMu.Unlock()
 
 	// Notify waiters
 	c.connCond.Broadcast()

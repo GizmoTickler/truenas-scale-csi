@@ -41,15 +41,17 @@ func NewMockClient() *MockClient {
 }
 
 // Core methods
-func (m *MockClient) Close() error                                                   { return nil }
-func (m *MockClient) IsConnected() bool                                              { return true }
-func (m *MockClient) Call(method string, params ...interface{}) (interface{}, error) { return nil, nil }
+func (m *MockClient) Close() error      { return nil }
+func (m *MockClient) IsConnected() bool { return true }
+func (m *MockClient) Call(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
+	return nil, nil
+}
 func (m *MockClient) CallWithContext(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
 	return nil, nil
 }
 
 // Dataset methods
-func (m *MockClient) DatasetCreate(params *DatasetCreateParams) (*Dataset, error) {
+func (m *MockClient) DatasetCreate(ctx context.Context, params *DatasetCreateParams) (*Dataset, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -74,7 +76,7 @@ func (m *MockClient) DatasetCreate(params *DatasetCreateParams) (*Dataset, error
 	return ds, nil
 }
 
-func (m *MockClient) DatasetDelete(name string, recursive bool, force bool) error {
+func (m *MockClient) DatasetDelete(ctx context.Context, name string, recursive bool, force bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -85,7 +87,7 @@ func (m *MockClient) DatasetDelete(name string, recursive bool, force bool) erro
 	return nil
 }
 
-func (m *MockClient) DatasetGet(name string) (*Dataset, error) {
+func (m *MockClient) DatasetGet(ctx context.Context, name string) (*Dataset, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -98,7 +100,7 @@ func (m *MockClient) DatasetGet(name string) (*Dataset, error) {
 	return nil, &APIError{Code: -1, Message: "dataset not found"}
 }
 
-func (m *MockClient) DatasetUpdate(name string, params *DatasetUpdateParams) (*Dataset, error) {
+func (m *MockClient) DatasetUpdate(ctx context.Context, name string, params *DatasetUpdateParams) (*Dataset, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -117,7 +119,7 @@ func (m *MockClient) DatasetUpdate(name string, params *DatasetUpdateParams) (*D
 	return ds, nil
 }
 
-func (m *MockClient) DatasetList(parentName string) ([]*Dataset, error) {
+func (m *MockClient) DatasetList(ctx context.Context, parentName string) ([]*Dataset, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -128,7 +130,7 @@ func (m *MockClient) DatasetList(parentName string) ([]*Dataset, error) {
 	return list, nil
 }
 
-func (m *MockClient) DatasetSetUserProperty(name string, key string, value string) error {
+func (m *MockClient) DatasetSetUserProperty(ctx context.Context, name string, key string, value string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -143,7 +145,7 @@ func (m *MockClient) DatasetSetUserProperty(name string, key string, value strin
 	return nil
 }
 
-func (m *MockClient) DatasetGetUserProperty(name string, key string) (string, error) {
+func (m *MockClient) DatasetGetUserProperty(ctx context.Context, name string, key string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -157,7 +159,7 @@ func (m *MockClient) DatasetGetUserProperty(name string, key string) (string, er
 	return "", nil
 }
 
-func (m *MockClient) DatasetExpand(name string, newSize int64) error {
+func (m *MockClient) DatasetExpand(ctx context.Context, name string, newSize int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -172,14 +174,14 @@ func (m *MockClient) DatasetExpand(name string, newSize int64) error {
 	return nil
 }
 
-func (m *MockClient) GetPoolAvailable(poolName string) (int64, error) {
+func (m *MockClient) GetPoolAvailable(ctx context.Context, poolName string) (int64, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.PoolAvailable, nil
 }
 
 // Snapshot methods
-func (m *MockClient) SnapshotCreate(dataset string, name string) (*Snapshot, error) {
+func (m *MockClient) SnapshotCreate(ctx context.Context, dataset string, name string) (*Snapshot, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -197,7 +199,7 @@ func (m *MockClient) SnapshotCreate(dataset string, name string) (*Snapshot, err
 	return snap, nil
 }
 
-func (m *MockClient) SnapshotDelete(snapshotID string, defer_ bool, recursive bool) error {
+func (m *MockClient) SnapshotDelete(ctx context.Context, snapshotID string, defer_ bool, recursive bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -208,7 +210,7 @@ func (m *MockClient) SnapshotDelete(snapshotID string, defer_ bool, recursive bo
 	return nil
 }
 
-func (m *MockClient) SnapshotGet(snapshotID string) (*Snapshot, error) {
+func (m *MockClient) SnapshotGet(ctx context.Context, snapshotID string) (*Snapshot, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -221,7 +223,7 @@ func (m *MockClient) SnapshotGet(snapshotID string) (*Snapshot, error) {
 	return nil, &APIError{Code: -1, Message: "snapshot not found"}
 }
 
-func (m *MockClient) SnapshotList(dataset string) ([]*Snapshot, error) {
+func (m *MockClient) SnapshotList(ctx context.Context, dataset string) ([]*Snapshot, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -234,7 +236,7 @@ func (m *MockClient) SnapshotList(dataset string) ([]*Snapshot, error) {
 	return list, nil
 }
 
-func (m *MockClient) SnapshotListAll(parentDataset string) ([]*Snapshot, error) {
+func (m *MockClient) SnapshotListAll(ctx context.Context, parentDataset string) ([]*Snapshot, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -245,7 +247,22 @@ func (m *MockClient) SnapshotListAll(parentDataset string) ([]*Snapshot, error) 
 	return list, nil
 }
 
-func (m *MockClient) SnapshotSetUserProperty(snapshotID string, key string, value string) error {
+func (m *MockClient) SnapshotFindByName(ctx context.Context, parentDataset string, name string) (*Snapshot, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.InjectError != nil {
+		return nil, m.InjectError
+	}
+	for _, snap := range m.Snapshots {
+		if snap.Name == name && snap.Dataset == parentDataset {
+			return snap, nil
+		}
+	}
+	return nil, nil // Not found, not an error
+}
+
+func (m *MockClient) SnapshotSetUserProperty(ctx context.Context, snapshotID string, key string, value string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -260,7 +277,7 @@ func (m *MockClient) SnapshotSetUserProperty(snapshotID string, key string, valu
 	return nil
 }
 
-func (m *MockClient) SnapshotClone(snapshotID string, newDatasetName string) error {
+func (m *MockClient) SnapshotClone(ctx context.Context, snapshotID string, newDatasetName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -276,12 +293,12 @@ func (m *MockClient) SnapshotClone(snapshotID string, newDatasetName string) err
 	return nil
 }
 
-func (m *MockClient) SnapshotRollback(snapshotID string, force bool, recursive bool, recursiveClones bool) error {
+func (m *MockClient) SnapshotRollback(ctx context.Context, snapshotID string, force bool, recursive bool, recursiveClones bool) error {
 	return nil
 }
 
 // NFS methods
-func (m *MockClient) NFSShareCreate(params *NFSShareCreateParams) (*NFSShare, error) {
+func (m *MockClient) NFSShareCreate(ctx context.Context, params *NFSShareCreateParams) (*NFSShare, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -297,7 +314,7 @@ func (m *MockClient) NFSShareCreate(params *NFSShareCreateParams) (*NFSShare, er
 	return share, nil
 }
 
-func (m *MockClient) NFSShareDelete(id int) error {
+func (m *MockClient) NFSShareDelete(ctx context.Context, id int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -305,7 +322,7 @@ func (m *MockClient) NFSShareDelete(id int) error {
 	return nil
 }
 
-func (m *MockClient) NFSShareGet(id int) (*NFSShare, error) {
+func (m *MockClient) NFSShareGet(ctx context.Context, id int) (*NFSShare, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -315,7 +332,7 @@ func (m *MockClient) NFSShareGet(id int) (*NFSShare, error) {
 	return nil, fmt.Errorf("share not found")
 }
 
-func (m *MockClient) NFSShareFindByPath(path string) (*NFSShare, error) {
+func (m *MockClient) NFSShareFindByPath(ctx context.Context, path string) (*NFSShare, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -327,7 +344,7 @@ func (m *MockClient) NFSShareFindByPath(path string) (*NFSShare, error) {
 	return nil, nil
 }
 
-func (m *MockClient) NFSShareList() ([]*NFSShare, error) {
+func (m *MockClient) NFSShareList(ctx context.Context) ([]*NFSShare, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -338,7 +355,7 @@ func (m *MockClient) NFSShareList() ([]*NFSShare, error) {
 	return list, nil
 }
 
-func (m *MockClient) NFSShareUpdate(id int, params map[string]interface{}) (*NFSShare, error) {
+func (m *MockClient) NFSShareUpdate(ctx context.Context, id int, params map[string]interface{}) (*NFSShare, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -346,7 +363,7 @@ func (m *MockClient) NFSShareUpdate(id int, params map[string]interface{}) (*NFS
 }
 
 // iSCSI methods
-func (m *MockClient) ISCSITargetCreate(name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error) {
+func (m *MockClient) ISCSITargetCreate(ctx context.Context, name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -355,14 +372,14 @@ func (m *MockClient) ISCSITargetCreate(name string, alias string, mode string, g
 	m.ISCSITargets[id] = target
 	return target, nil
 }
-func (m *MockClient) ISCSITargetDelete(id int, force bool) error {
+func (m *MockClient) ISCSITargetDelete(ctx context.Context, id int, force bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	delete(m.ISCSITargets, id)
 	return nil
 }
-func (m *MockClient) ISCSITargetGet(id int) (*ISCSITarget, error) {
+func (m *MockClient) ISCSITargetGet(ctx context.Context, id int) (*ISCSITarget, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -371,7 +388,7 @@ func (m *MockClient) ISCSITargetGet(id int) (*ISCSITarget, error) {
 	}
 	return nil, fmt.Errorf("not found")
 }
-func (m *MockClient) ISCSITargetFindByName(name string) (*ISCSITarget, error) {
+func (m *MockClient) ISCSITargetFindByName(ctx context.Context, name string) (*ISCSITarget, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -382,7 +399,7 @@ func (m *MockClient) ISCSITargetFindByName(name string) (*ISCSITarget, error) {
 	}
 	return nil, nil
 }
-func (m *MockClient) ISCSIExtentCreate(name string, diskPath string, comment string, blocksize int, rpm string) (*ISCSIExtent, error) {
+func (m *MockClient) ISCSIExtentCreate(ctx context.Context, name string, diskPath string, comment string, blocksize int, rpm string) (*ISCSIExtent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -391,14 +408,14 @@ func (m *MockClient) ISCSIExtentCreate(name string, diskPath string, comment str
 	m.ISCSIExtents[id] = ext
 	return ext, nil
 }
-func (m *MockClient) ISCSIExtentDelete(id int, remove bool, force bool) error {
+func (m *MockClient) ISCSIExtentDelete(ctx context.Context, id int, remove bool, force bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	delete(m.ISCSIExtents, id)
 	return nil
 }
-func (m *MockClient) ISCSIExtentGet(id int) (*ISCSIExtent, error) {
+func (m *MockClient) ISCSIExtentGet(ctx context.Context, id int) (*ISCSIExtent, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -407,7 +424,7 @@ func (m *MockClient) ISCSIExtentGet(id int) (*ISCSIExtent, error) {
 	}
 	return nil, fmt.Errorf("not found")
 }
-func (m *MockClient) ISCSIExtentFindByName(name string) (*ISCSIExtent, error) {
+func (m *MockClient) ISCSIExtentFindByName(ctx context.Context, name string) (*ISCSIExtent, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -418,7 +435,7 @@ func (m *MockClient) ISCSIExtentFindByName(name string) (*ISCSIExtent, error) {
 	}
 	return nil, nil
 }
-func (m *MockClient) ISCSITargetExtentCreate(targetID int, extentID int, lunID int) (*ISCSITargetExtent, error) {
+func (m *MockClient) ISCSITargetExtentCreate(ctx context.Context, targetID int, extentID int, lunID int) (*ISCSITargetExtent, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -427,14 +444,14 @@ func (m *MockClient) ISCSITargetExtentCreate(targetID int, extentID int, lunID i
 	m.TargetExtents[id] = te
 	return te, nil
 }
-func (m *MockClient) ISCSITargetExtentDelete(id int, force bool) error {
+func (m *MockClient) ISCSITargetExtentDelete(ctx context.Context, id int, force bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	delete(m.TargetExtents, id)
 	return nil
 }
-func (m *MockClient) ISCSITargetExtentFind(targetID int, extentID int) (*ISCSITargetExtent, error) {
+func (m *MockClient) ISCSITargetExtentFind(ctx context.Context, targetID int, extentID int) (*ISCSITargetExtent, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -445,12 +462,12 @@ func (m *MockClient) ISCSITargetExtentFind(targetID int, extentID int) (*ISCSITa
 	}
 	return nil, nil
 }
-func (m *MockClient) ISCSIGlobalConfigGet() (*ISCSIGlobalConfig, error) {
+func (m *MockClient) ISCSIGlobalConfigGet(ctx context.Context) (*ISCSIGlobalConfig, error) {
 	return &ISCSIGlobalConfig{Basename: "iqn.2005-10.org.freenas.ctl"}, nil
 }
 
 // NVMe-oF methods
-func (m *MockClient) NVMeoFSubsystemCreate(nqn string, serial string, allowAnyHost bool, hosts []string) (*NVMeoFSubsystem, error) {
+func (m *MockClient) NVMeoFSubsystemCreate(ctx context.Context, nqn string, serial string, allowAnyHost bool, hosts []string) (*NVMeoFSubsystem, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -459,14 +476,14 @@ func (m *MockClient) NVMeoFSubsystemCreate(nqn string, serial string, allowAnyHo
 	m.NVMeSubsystems[id] = sub
 	return sub, nil
 }
-func (m *MockClient) NVMeoFSubsystemDelete(id int) error {
+func (m *MockClient) NVMeoFSubsystemDelete(ctx context.Context, id int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	delete(m.NVMeSubsystems, id)
 	return nil
 }
-func (m *MockClient) NVMeoFSubsystemGet(id int) (*NVMeoFSubsystem, error) {
+func (m *MockClient) NVMeoFSubsystemGet(ctx context.Context, id int) (*NVMeoFSubsystem, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -475,7 +492,7 @@ func (m *MockClient) NVMeoFSubsystemGet(id int) (*NVMeoFSubsystem, error) {
 	}
 	return nil, fmt.Errorf("not found")
 }
-func (m *MockClient) NVMeoFSubsystemFindByNQN(nqn string) (*NVMeoFSubsystem, error) {
+func (m *MockClient) NVMeoFSubsystemFindByNQN(ctx context.Context, nqn string) (*NVMeoFSubsystem, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -486,7 +503,7 @@ func (m *MockClient) NVMeoFSubsystemFindByNQN(nqn string) (*NVMeoFSubsystem, err
 	}
 	return nil, nil
 }
-func (m *MockClient) NVMeoFNamespaceCreate(subsystemID int, devicePath string) (*NVMeoFNamespace, error) {
+func (m *MockClient) NVMeoFNamespaceCreate(ctx context.Context, subsystemID int, devicePath string) (*NVMeoFNamespace, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -495,14 +512,14 @@ func (m *MockClient) NVMeoFNamespaceCreate(subsystemID int, devicePath string) (
 	m.NVMeNamespaces[id] = ns
 	return ns, nil
 }
-func (m *MockClient) NVMeoFNamespaceDelete(id int) error {
+func (m *MockClient) NVMeoFNamespaceDelete(ctx context.Context, id int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	delete(m.NVMeNamespaces, id)
 	return nil
 }
-func (m *MockClient) NVMeoFNamespaceGet(id int) (*NVMeoFNamespace, error) {
+func (m *MockClient) NVMeoFNamespaceGet(ctx context.Context, id int) (*NVMeoFNamespace, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -511,7 +528,7 @@ func (m *MockClient) NVMeoFNamespaceGet(id int) (*NVMeoFNamespace, error) {
 	}
 	return nil, fmt.Errorf("not found")
 }
-func (m *MockClient) NVMeoFNamespaceFindByDevice(subsystemID int, devicePath string) (*NVMeoFNamespace, error) {
+func (m *MockClient) NVMeoFNamespaceFindByDevice(ctx context.Context, subsystemID int, devicePath string) (*NVMeoFNamespace, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -522,9 +539,9 @@ func (m *MockClient) NVMeoFNamespaceFindByDevice(subsystemID int, devicePath str
 	}
 	return nil, nil
 }
-func (m *MockClient) NVMeoFPortList() ([]*NVMeoFPort, error) {
+func (m *MockClient) NVMeoFPortList(ctx context.Context) ([]*NVMeoFPort, error) {
 	return []*NVMeoFPort{{ID: 1, Transport: "tcp", Address: "0.0.0.0", Port: 4420}}, nil
 }
-func (m *MockClient) NVMeoFGetTransportAddresses(transport string) ([]string, error) {
+func (m *MockClient) NVMeoFGetTransportAddresses(ctx context.Context, transport string) ([]string, error) {
 	return []string{"0.0.0.0"}, nil
 }

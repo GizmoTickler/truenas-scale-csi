@@ -1,6 +1,7 @@
 package truenas
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -58,7 +59,7 @@ type ISCSIGlobalConfig struct {
 }
 
 // ISCSITargetCreate creates a new iSCSI target.
-func (c *Client) ISCSITargetCreate(name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error) {
+func (c *Client) ISCSITargetCreate(ctx context.Context, name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error) {
 	params := map[string]interface{}{
 		"name":   name,
 		"alias":  alias,
@@ -66,10 +67,10 @@ func (c *Client) ISCSITargetCreate(name string, alias string, mode string, group
 		"groups": groups,
 	}
 
-	result, err := c.Call("iscsi.target.create", params)
+	result, err := c.Call(ctx, "iscsi.target.create", params)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
-			return c.ISCSITargetFindByName(name)
+			return c.ISCSITargetFindByName(ctx, name)
 		}
 		return nil, fmt.Errorf("failed to create iSCSI target: %w", err)
 	}
@@ -78,8 +79,8 @@ func (c *Client) ISCSITargetCreate(name string, alias string, mode string, group
 }
 
 // ISCSITargetDelete deletes an iSCSI target.
-func (c *Client) ISCSITargetDelete(id int, force bool) error {
-	_, err := c.Call("iscsi.target.delete", id, force)
+func (c *Client) ISCSITargetDelete(ctx context.Context, id int, force bool) error {
+	_, err := c.Call(ctx, "iscsi.target.delete", id, force)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
 			strings.Contains(err.Error(), "not found") {
@@ -91,9 +92,9 @@ func (c *Client) ISCSITargetDelete(id int, force bool) error {
 }
 
 // ISCSITargetGet retrieves an iSCSI target by ID.
-func (c *Client) ISCSITargetGet(id int) (*ISCSITarget, error) {
+func (c *Client) ISCSITargetGet(ctx context.Context, id int) (*ISCSITarget, error) {
 	filters := [][]interface{}{{"id", "=", id}}
-	result, err := c.Call("iscsi.target.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "iscsi.target.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get iSCSI target: %w", err)
 	}
@@ -107,9 +108,9 @@ func (c *Client) ISCSITargetGet(id int) (*ISCSITarget, error) {
 }
 
 // ISCSITargetFindByName finds an iSCSI target by name.
-func (c *Client) ISCSITargetFindByName(name string) (*ISCSITarget, error) {
+func (c *Client) ISCSITargetFindByName(ctx context.Context, name string) (*ISCSITarget, error) {
 	filters := [][]interface{}{{"name", "=", name}}
-	result, err := c.Call("iscsi.target.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "iscsi.target.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query iSCSI targets: %w", err)
 	}
@@ -123,7 +124,7 @@ func (c *Client) ISCSITargetFindByName(name string) (*ISCSITarget, error) {
 }
 
 // ISCSIExtentCreate creates a new iSCSI extent.
-func (c *Client) ISCSIExtentCreate(name string, diskPath string, comment string, blocksize int, rpm string) (*ISCSIExtent, error) {
+func (c *Client) ISCSIExtentCreate(ctx context.Context, name string, diskPath string, comment string, blocksize int, rpm string) (*ISCSIExtent, error) {
 	params := map[string]interface{}{
 		"name":         name,
 		"type":         "DISK",
@@ -137,10 +138,10 @@ func (c *Client) ISCSIExtentCreate(name string, diskPath string, comment string,
 		"enabled":      true,
 	}
 
-	result, err := c.Call("iscsi.extent.create", params)
+	result, err := c.Call(ctx, "iscsi.extent.create", params)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
-			return c.ISCSIExtentFindByName(name)
+			return c.ISCSIExtentFindByName(ctx, name)
 		}
 		return nil, fmt.Errorf("failed to create iSCSI extent: %w", err)
 	}
@@ -149,8 +150,8 @@ func (c *Client) ISCSIExtentCreate(name string, diskPath string, comment string,
 }
 
 // ISCSIExtentDelete deletes an iSCSI extent.
-func (c *Client) ISCSIExtentDelete(id int, remove bool, force bool) error {
-	_, err := c.Call("iscsi.extent.delete", id, remove, force)
+func (c *Client) ISCSIExtentDelete(ctx context.Context, id int, remove bool, force bool) error {
+	_, err := c.Call(ctx, "iscsi.extent.delete", id, remove, force)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
 			strings.Contains(err.Error(), "not found") {
@@ -162,9 +163,9 @@ func (c *Client) ISCSIExtentDelete(id int, remove bool, force bool) error {
 }
 
 // ISCSIExtentGet retrieves an iSCSI extent by ID.
-func (c *Client) ISCSIExtentGet(id int) (*ISCSIExtent, error) {
+func (c *Client) ISCSIExtentGet(ctx context.Context, id int) (*ISCSIExtent, error) {
 	filters := [][]interface{}{{"id", "=", id}}
-	result, err := c.Call("iscsi.extent.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "iscsi.extent.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get iSCSI extent: %w", err)
 	}
@@ -178,9 +179,9 @@ func (c *Client) ISCSIExtentGet(id int) (*ISCSIExtent, error) {
 }
 
 // ISCSIExtentFindByName finds an iSCSI extent by name.
-func (c *Client) ISCSIExtentFindByName(name string) (*ISCSIExtent, error) {
+func (c *Client) ISCSIExtentFindByName(ctx context.Context, name string) (*ISCSIExtent, error) {
 	filters := [][]interface{}{{"name", "=", name}}
-	result, err := c.Call("iscsi.extent.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "iscsi.extent.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query iSCSI extents: %w", err)
 	}
@@ -194,7 +195,7 @@ func (c *Client) ISCSIExtentFindByName(name string) (*ISCSIExtent, error) {
 }
 
 // ISCSITargetExtentCreate creates a target-to-extent association.
-func (c *Client) ISCSITargetExtentCreate(targetID int, extentID int, lunID int) (*ISCSITargetExtent, error) {
+func (c *Client) ISCSITargetExtentCreate(ctx context.Context, targetID int, extentID int, lunID int) (*ISCSITargetExtent, error) {
 	params := map[string]interface{}{
 		"target": targetID,
 		"extent": extentID,
@@ -203,10 +204,10 @@ func (c *Client) ISCSITargetExtentCreate(targetID int, extentID int, lunID int) 
 		params["lunid"] = lunID
 	}
 
-	result, err := c.Call("iscsi.targetextent.create", params)
+	result, err := c.Call(ctx, "iscsi.targetextent.create", params)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
-			return c.ISCSITargetExtentFind(targetID, extentID)
+			return c.ISCSITargetExtentFind(ctx, targetID, extentID)
 		}
 		return nil, fmt.Errorf("failed to create target-extent association: %w", err)
 	}
@@ -215,8 +216,8 @@ func (c *Client) ISCSITargetExtentCreate(targetID int, extentID int, lunID int) 
 }
 
 // ISCSITargetExtentDelete deletes a target-to-extent association.
-func (c *Client) ISCSITargetExtentDelete(id int, force bool) error {
-	_, err := c.Call("iscsi.targetextent.delete", id, force)
+func (c *Client) ISCSITargetExtentDelete(ctx context.Context, id int, force bool) error {
+	_, err := c.Call(ctx, "iscsi.targetextent.delete", id, force)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") ||
 			strings.Contains(err.Error(), "not found") {
@@ -228,12 +229,12 @@ func (c *Client) ISCSITargetExtentDelete(id int, force bool) error {
 }
 
 // ISCSITargetExtentFind finds a target-extent association.
-func (c *Client) ISCSITargetExtentFind(targetID int, extentID int) (*ISCSITargetExtent, error) {
+func (c *Client) ISCSITargetExtentFind(ctx context.Context, targetID int, extentID int) (*ISCSITargetExtent, error) {
 	filters := [][]interface{}{
 		{"target", "=", targetID},
 		{"extent", "=", extentID},
 	}
-	result, err := c.Call("iscsi.targetextent.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "iscsi.targetextent.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query target-extent associations: %w", err)
 	}
@@ -247,8 +248,8 @@ func (c *Client) ISCSITargetExtentFind(targetID int, extentID int) (*ISCSITarget
 }
 
 // ISCSIGlobalConfigGet retrieves the global iSCSI configuration.
-func (c *Client) ISCSIGlobalConfigGet() (*ISCSIGlobalConfig, error) {
-	result, err := c.Call("iscsi.global.config")
+func (c *Client) ISCSIGlobalConfigGet(ctx context.Context) (*ISCSIGlobalConfig, error) {
+	result, err := c.Call(ctx, "iscsi.global.config")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get iSCSI global config: %w", err)
 	}

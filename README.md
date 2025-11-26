@@ -225,114 +225,23 @@ TrueNAS API endpoint (`wss://host/api/current`).
      - **iSCSI**: 3260 (default)
      - **NVMe-oF**: 4420 (TCP default)
 
-### Helm Installation
+## Documentation
 
-The Helm chart is published as an OCI artifact to GitHub Container Registry.
+- **[Architecture Guide](docs/architecture.md)**: Learn how the driver works, component responsibilities, and storage workflows.
+- **[Deployment & Configuration Guide](docs/deployment.md)**: Detailed instructions for Helm and Flux deployments, plus a complete configuration reference.
 
-```bash
-# Login to ghcr.io (optional, only needed for private repos)
-# helm registry login ghcr.io -u <username>
-
-# Pull and install NFS driver
-helm install truenas-nfs \
-  oci://ghcr.io/gizmotickler/charts/truenas-csi \
-  --namespace truenas-csi \
-  --create-namespace \
-  --values truenas-nfs.yaml
-
-# Pull and install iSCSI driver
-helm install truenas-iscsi \
-  oci://ghcr.io/gizmotickler/charts/truenas-csi \
-  --namespace truenas-csi \
-  --create-namespace \
-  --values truenas-iscsi.yaml
-
-# Pull and install NVMe-oF driver
-helm install truenas-nvmeof \
-  oci://ghcr.io/gizmotickler/charts/truenas-csi \
-  --namespace truenas-csi \
-  --create-namespace \
-  --values truenas-nvmeof.yaml
-
-# To see available versions
-helm show all oci://ghcr.io/gizmotickler/charts/truenas-csi
-
-# To pull a specific version
-helm pull oci://ghcr.io/gizmotickler/charts/truenas-csi --version 4.0.0
-```
-
-Copy and edit the appropriate values file from `examples/`:
-- `examples/truenas-nfs.yaml`
-- `examples/truenas-iscsi.yaml`
-- `examples/truenas-nvmeof.yaml`
-
-### Non-Standard Kubelet Paths
-
-Some distributions use non-standard kubelet paths:
+## Quick Start (Helm)
 
 ```bash
-# microk8s example
-helm install truenas-nfs \
+helm install truenas-csi \
   oci://ghcr.io/gizmotickler/charts/truenas-csi \
   --namespace truenas-csi \
   --create-namespace \
-  --values truenas-nfs.yaml \
-  --set node.kubeletHostPath="/var/snap/microk8s/common/var/lib/kubelet"
+  --values values.yaml \
+  --version 2.2.8
 ```
 
-Common non-standard kubelet paths:
-- **microk8s**: `/var/snap/microk8s/common/var/lib/kubelet`
-- **pivotal**: `/var/vcap/data/kubelet`
-- **k0s**: `/var/lib/k0s/kubelet`
-
-### OpenShift
-
-Set these parameters during helm installation:
-
-```bash
---set node.rbac.openshift.privileged=true
---set node.driver.localtimeHostPath=false
-
-# Rarely needed, but may be required in special circumstances
---set controller.rbac.openshift.privileged=true
-```
-
-## Multiple Deployments
-
-You can install multiple deployments of any driver:
-
-- Use a unique helm release name for each deployment
-- Set a unique `csiDriver.name` in the values file (per cluster)
-- Use unique storage class names (per cluster)
-- Use a unique parent dataset for each deployment
-- For `iscsi` and `nvmeof`, use `nameTemplate`, `namePrefix`, and `nameSuffix` to avoid collisions
-
-## Snapshot Support
-
-Install the snapshot controller once per cluster:
-
-**Option 1**: Use the upstream kubernetes-csi snapshotter
-- https://github.com/kubernetes-csi/external-snapshotter/tree/master/client/config/crd
-- https://github.com/kubernetes-csi/external-snapshotter/tree/master/deploy/kubernetes/snapshot-controller
-
-Then install with `volumeSnapshotClasses` defined in your values file.
-
-**Resources:**
-- https://kubernetes.io/docs/concepts/storage/volume-snapshots/
-- https://github.com/kubernetes-csi/external-snapshotter#usage
-
-## Configuration Examples
-
-See the `examples/` directory for complete configuration examples:
-- `examples/truenas-nfs.yaml` - NFS driver configuration
-- `examples/truenas-iscsi.yaml` - iSCSI driver configuration
-- `examples/truenas-nvmeof.yaml` - NVMe-oF driver configuration
-
-## Additional Resources
-
-- [TrueNAS SCALE 25.04 API Documentation](https://api.truenas.com/v25.04.2/jsonrpc.html)
-- [TrueNAS API Client Reference](https://github.com/truenas/api_client)
-- [Kubernetes CSI Documentation](https://kubernetes-csi.github.io/docs/)
+See [Deployment Guide](docs/deployment.md) for full details.
 
 ## Credits
 

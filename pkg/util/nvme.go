@@ -222,7 +222,8 @@ func waitForNVMeDevice(nqn string, timeout time.Duration) (string, error) {
 }
 
 // findNVMeDevice finds the device path for an NVMe subsystem.
-func findNVMeDevice(nqn string) (string, error) {
+// Variable for testability.
+var findNVMeDevice = func(nqn string) (string, error) {
 	// Look in /sys/class/nvme-subsystem
 	subsysDirs, err := filepath.Glob("/sys/class/nvme-subsystem/nvme-subsys*")
 	if err != nil {

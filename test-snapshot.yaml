@@ -1,0 +1,66 @@
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: truenas-snapshot
+driver: org.truenas.csi
+deletionPolicy: Delete
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: csi-smoke-test-snapshot
+  namespace: default
+spec:
+  volumeSnapshotClassName: truenas-snapshot
+  source:
+    persistentVolumeClaimName: csi-smoke-test-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: csi-restore-test-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: truenas-iscsi
+  resources:
+    requests:
+      storage: 1Gi
+  dataSource:
+    name: csi-smoke-test-snapshot
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-restore-test-pod
+  namespace: default
+spec:
+  containers:
+    - name: test
+      image: busybox:latest
+      command:
+        - sh
+        - -c
+        - |
+          echo "Starting restore test..."
+          echo "Verifying restored data..."
+          if [ -f /data/test.txt ]; then
+            echo "Found test.txt"
+            cat /data/test.txt
+            echo "Restore test completed successfully!"
+          else
+            echo "Error: test.txt not found!"
+            exit 1
+          fi
+          sleep 3600
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: csi-restore-test-pvc

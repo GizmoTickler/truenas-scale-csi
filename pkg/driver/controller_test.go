@@ -39,7 +39,7 @@ func TestCreateVolume(t *testing.T) {
 	assert.Equal(t, int64(1024*1024*1024), resp.Volume.CapacityBytes)
 
 	// Verify dataset created
-	ds, err := mockClient.DatasetGet("pool/parent/vol-01")
+	ds, err := mockClient.DatasetGet(context.Background(), "pool/parent/vol-01")
 	assert.NoError(t, err)
 	assert.Equal(t, "pool/parent/vol-01", ds.ID)
 
@@ -67,7 +67,7 @@ func TestDeleteVolume(t *testing.T) {
 
 	// Pre-create volume
 	volName := "vol-delete"
-	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{
+	_, err := mockClient.DatasetCreate(context.Background(), &truenas.DatasetCreateParams{
 		Name: "pool/parent/" + volName,
 	})
 	assert.NoError(t, err)
@@ -80,7 +80,7 @@ func TestDeleteVolume(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify dataset deleted
-	_, err = mockClient.DatasetGet("pool/parent/" + volName)
+	_, err = mockClient.DatasetGet(context.Background(), "pool/parent/"+volName)
 	assert.Error(t, err)
 
 	// Test Case 2: Idempotency (Already deleted)
@@ -106,7 +106,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 	// Pre-create source volume
 	volName := "vol-snap"
-	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{
+	_, err := mockClient.DatasetCreate(context.Background(), &truenas.DatasetCreateParams{
 		Name: "pool/parent/" + volName,
 	})
 	assert.NoError(t, err)
@@ -124,7 +124,7 @@ func TestCreateSnapshot(t *testing.T) {
 
 	// Verify snapshot created
 	snapID := "pool/parent/" + volName + "@snap-01"
-	snap, err := mockClient.SnapshotGet(snapID)
+	snap, err := mockClient.SnapshotGet(context.Background(), snapID)
 	assert.NoError(t, err)
 	assert.Equal(t, snapID, snap.ID)
 
@@ -148,9 +148,9 @@ func TestDeleteSnapshot(t *testing.T) {
 	// Pre-create snapshot
 	snapName := "snap-delete"
 	volName := "vol-snap-del"
-	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{Name: "pool/parent/" + volName})
+	_, err := mockClient.DatasetCreate(context.Background(), &truenas.DatasetCreateParams{Name: "pool/parent/" + volName})
 	assert.NoError(t, err)
-	_, err = mockClient.SnapshotCreate("pool/parent/"+volName, snapName)
+	_, err = mockClient.SnapshotCreate(context.Background(), "pool/parent/"+volName, snapName)
 	assert.NoError(t, err)
 
 	// Test Case 1: Success
@@ -181,7 +181,7 @@ func TestControllerExpandVolume(t *testing.T) {
 
 	// Pre-create volume
 	volName := "vol-expand"
-	_, err := mockClient.DatasetCreate(&truenas.DatasetCreateParams{
+	_, err := mockClient.DatasetCreate(context.Background(), &truenas.DatasetCreateParams{
 		Name:    "pool/parent/" + volName,
 		Volsize: 1024,
 	})
@@ -200,7 +200,7 @@ func TestControllerExpandVolume(t *testing.T) {
 	assert.False(t, resp.NodeExpansionRequired) // NFS doesn't require node expansion usually, but code says depends on resource type
 
 	// Verify expansion
-	ds, _ := mockClient.DatasetGet("pool/parent/" + volName)
+	ds, _ := mockClient.DatasetGet(context.Background(), "pool/parent/"+volName)
 	// Note: Mock implementation updates Volsize for Expand, but driver might update Refquota for NFS
 	// Let's check what the driver does.
 	// Driver checks config.GetZFSResourceType().

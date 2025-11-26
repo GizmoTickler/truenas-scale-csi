@@ -1,6 +1,7 @@
 package truenas
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -24,17 +25,17 @@ type SnapshotCreateParams struct {
 }
 
 // SnapshotCreate creates a new ZFS snapshot.
-func (c *Client) SnapshotCreate(dataset string, name string) (*Snapshot, error) {
+func (c *Client) SnapshotCreate(ctx context.Context, dataset string, name string) (*Snapshot, error) {
 	params := &SnapshotCreateParams{
 		Dataset: dataset,
 		Name:    name,
 	}
 
-	result, err := c.Call("zfs.snapshot.create", params)
+	result, err := c.Call(ctx, "zfs.snapshot.create", params)
 	if err != nil {
 		// Ignore "already exists" errors
 		if strings.Contains(err.Error(), "already exists") {
-			return c.SnapshotGet(dataset + "@" + name)
+			return c.SnapshotGet(ctx, dataset+"@"+name)
 		}
 		return nil, fmt.Errorf("failed to create snapshot: %w", err)
 	}
@@ -43,13 +44,13 @@ func (c *Client) SnapshotCreate(dataset string, name string) (*Snapshot, error) 
 }
 
 // SnapshotDelete deletes a ZFS snapshot.
-func (c *Client) SnapshotDelete(snapshotID string, defer_ bool, recursive bool) error {
+func (c *Client) SnapshotDelete(ctx context.Context, snapshotID string, defer_ bool, recursive bool) error {
 	options := map[string]interface{}{
 		"defer":     defer_,
 		"recursive": recursive,
 	}
 
-	_, err := c.Call("zfs.snapshot.delete", snapshotID, options)
+	_, err := c.Call(ctx, "zfs.snapshot.delete", snapshotID, options)
 	if err != nil {
 		// Ignore "does not exist" errors
 		if strings.Contains(err.Error(), "does not exist") ||
@@ -63,8 +64,8 @@ func (c *Client) SnapshotDelete(snapshotID string, defer_ bool, recursive bool) 
 }
 
 // SnapshotGet retrieves a snapshot by ID (dataset@snapshot format).
-func (c *Client) SnapshotGet(snapshotID string) (*Snapshot, error) {
-	result, err := c.Call("zfs.snapshot.get_instance", snapshotID)
+func (c *Client) SnapshotGet(ctx context.Context, snapshotID string) (*Snapshot, error) {
+	result, err := c.Call(ctx, "zfs.snapshot.get_instance", snapshotID)
 	if err != nil {
 		// Check for "Invalid params" which indicates not found for get_instance
 		if apiErr, ok := err.(*APIError); ok && apiErr.Code == -32602 {
@@ -81,10 +82,10 @@ func (c *Client) SnapshotGet(snapshotID string) (*Snapshot, error) {
 }
 
 // SnapshotList lists snapshots for a dataset.
-func (c *Client) SnapshotList(dataset string) ([]*Snapshot, error) {
+func (c *Client) SnapshotList(ctx context.Context, dataset string) ([]*Snapshot, error) {
 	filters := [][]interface{}{{"dataset", "=", dataset}}
 
-	result, err := c.Call("zfs.snapshot.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "zfs.snapshot.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list snapshots: %w", err)
 	}
@@ -107,10 +108,10 @@ func (c *Client) SnapshotList(dataset string) ([]*Snapshot, error) {
 }
 
 // SnapshotListAll lists all snapshots under a parent dataset (recursive).
-func (c *Client) SnapshotListAll(parentDataset string) ([]*Snapshot, error) {
+func (c *Client) SnapshotListAll(ctx context.Context, parentDataset string) ([]*Snapshot, error) {
 	filters := [][]interface{}{{"dataset", "^", parentDataset}}
 
-	result, err := c.Call("zfs.snapshot.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "zfs.snapshot.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list snapshots: %w", err)
 	}
@@ -135,7 +136,7 @@ func (c *Client) SnapshotListAll(parentDataset string) ([]*Snapshot, error) {
 // SnapshotFindByName finds a snapshot by its short name under a parent dataset.
 // This is more efficient than SnapshotListAll + iteration (PERF-001 fix).
 // The name parameter is the snapshot name without the dataset prefix (e.g., "my-snapshot" not "pool/dataset@my-snapshot").
-func (c *Client) SnapshotFindByName(parentDataset string, name string) (*Snapshot, error) {
+func (c *Client) SnapshotFindByName(ctx context.Context, parentDataset string, name string) (*Snapshot, error) {
 	// Build the full snapshot ID pattern to match: any dataset under parentDataset + @ + name
 	// We use "name" filter which matches the snapshot name part (after @)
 	// and "dataset" filter to restrict to our parent dataset
@@ -144,7 +145,7 @@ func (c *Client) SnapshotFindByName(parentDataset string, name string) (*Snapsho
 		{"name", "=", name},
 	}
 
-	result, err := c.Call("zfs.snapshot.query", filters, map[string]interface{}{})
+	result, err := c.Call(ctx, "zfs.snapshot.query", filters, map[string]interface{}{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query snapshots: %w", err)
 	}
@@ -162,25 +163,25 @@ func (c *Client) SnapshotFindByName(parentDataset string, name string) (*Snapsho
 }
 
 // SnapshotSetUserProperty sets a user property on a snapshot.
-func (c *Client) SnapshotSetUserProperty(snapshotID string, key string, value string) error {
+func (c *Client) SnapshotSetUserProperty(ctx context.Context, snapshotID string, key string, value string) error {
 	params := map[string]interface{}{
 		"user_properties_update": []map[string]interface{}{
 			{"key": key, "value": value},
 		},
 	}
 
-	_, err := c.Call("zfs.snapshot.update", snapshotID, params)
+	_, err := c.Call(ctx, "zfs.snapshot.update", snapshotID, params)
 	return err
 }
 
 // SnapshotClone clones a snapshot to create a new dataset.
-func (c *Client) SnapshotClone(snapshotID string, newDatasetName string) error {
+func (c *Client) SnapshotClone(ctx context.Context, snapshotID string, newDatasetName string) error {
 	params := map[string]interface{}{
 		"snapshot":    snapshotID,
 		"dataset_dst": newDatasetName,
 	}
 
-	_, err := c.Call("zfs.snapshot.clone", params)
+	_, err := c.Call(ctx, "zfs.snapshot.clone", params)
 	if err != nil {
 		// Ignore "already exists" errors
 		if strings.Contains(err.Error(), "already exists") {
@@ -193,14 +194,14 @@ func (c *Client) SnapshotClone(snapshotID string, newDatasetName string) error {
 }
 
 // SnapshotRollback rolls back a dataset to a snapshot.
-func (c *Client) SnapshotRollback(snapshotID string, force bool, recursive bool, recursiveClones bool) error {
+func (c *Client) SnapshotRollback(ctx context.Context, snapshotID string, force bool, recursive bool, recursiveClones bool) error {
 	options := map[string]interface{}{
 		"force":            force,
 		"recursive":        recursive,
 		"recursive_clones": recursiveClones,
 	}
 
-	_, err := c.Call("zfs.snapshot.rollback", snapshotID, options)
+	_, err := c.Call(ctx, "zfs.snapshot.rollback", snapshotID, options)
 	if err != nil {
 		return fmt.Errorf("failed to rollback snapshot: %w", err)
 	}

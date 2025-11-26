@@ -465,33 +465,24 @@ func GetISCSIInfoFromDevice(devicePath string) (string, string, error) {
 	}
 
 	// Get IQN
-	// Try to find targetname file in the session directory structure
 	iqn := ""
-	// Common path: sessionDir/iscsi_session/sessionY/targetname
-	globPattern := filepath.Join(sessionDir, "iscsi_session", "session*", "targetname")
-	matches, _ := filepath.Glob(globPattern)
-	if len(matches) > 0 {
-		content, err := os.ReadFile(matches[0])
-		if err == nil {
-			iqn = strings.TrimSpace(string(content))
+	// Optimization (PERF-005): Construct path directly using session name instead of walking
+	sessionName := filepath.Base(sessionDir)
+	targetNamePath := filepath.Join("/sys/class/iscsi_session", sessionName, "targetname")
+	content, err := os.ReadFile(targetNamePath)
+	if err == nil {
+		iqn = strings.TrimSpace(string(content))
+	} else {
+		// Fallback: Try the old glob pattern if the direct class path fails
+		// (This handles cases where sessionDir might not be what we expect)
+		globPattern := filepath.Join(sessionDir, "iscsi_session", "session*", "targetname")
+		matches, _ := filepath.Glob(globPattern)
+		if len(matches) > 0 {
+			content, err := os.ReadFile(matches[0])
+			if err == nil {
+				iqn = strings.TrimSpace(string(content))
+			}
 		}
-	}
-
-	if iqn == "" {
-		// Fallback: direct search
-		_ = filepath.Walk(sessionDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			if filepath.Base(path) == "targetname" {
-				content, err := os.ReadFile(path)
-				if err == nil {
-					iqn = strings.TrimSpace(string(content))
-					return filepath.SkipDir // Found it
-				}
-			}
-			return nil
-		})
 	}
 
 	if iqn == "" {

@@ -1,3 +1,19 @@
+# v2.2.8
+
+Release 2025-11-26
+
+**Context Propagation & Reliability:**
+- Implemented full context propagation across the driver and client to ensure proper timeout and cancellation handling (OTHER-002)
+- Fixed `errgroup` usage in `CreateVolume` to ensure context cancellation propagates to parallel tasks (BUG-005)
+- Improved error handling in share management to properly report failures when storing metadata (OTHER-005)
+
+**Performance Improvements:**
+- Optimized `GetISCSIInfoFromDevice` to avoid expensive filesystem walking by using direct path lookup (PERF-005)
+- Added check-before-set logic for property updates in `CreateVolume` to reduce redundant API calls (PERF-006)
+
+**Bug Fixes:**
+- Fixed `MockClient.SnapshotFindByName` to correctly filter by parent dataset
+
 # v2.2.7
 
 Release 2025-11-25

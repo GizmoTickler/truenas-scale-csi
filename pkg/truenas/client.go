@@ -117,9 +117,9 @@ type Client struct {
 	lastPong      int64 // atomic unix timestamp
 
 	// Safe channel closure (BUG-001 fix: prevents race condition on channel close)
-	closeMu              sync.Mutex
-	writeLoopDoneClosed  bool
-	heartbeatDoneClosed  bool
+	closeMu             sync.Mutex
+	writeLoopDoneClosed bool
+	heartbeatDoneClosed bool
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.
@@ -577,9 +577,7 @@ func (c *Client) handleDisconnect() {
 }
 
 // Call makes a JSON-RPC call to the TrueNAS API.
-func (c *Client) Call(method string, params ...interface{}) (interface{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.config.Timeout)
-	defer cancel()
+func (c *Client) Call(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
 	return c.CallWithContext(ctx, method, params...)
 }
 

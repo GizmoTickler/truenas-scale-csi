@@ -150,7 +150,7 @@ func (c *Client) SnapshotFindByName(ctx context.Context, parentDataset string, n
 	// The pattern matches any string ending with "@" + name
 	filters := [][]interface{}{
 		{"dataset", "^", parentDataset},
-		{"id", "~", fmt.Sprintf("@%s$", name)},
+		{"id", "~", fmt.Sprintf(".*@%s$", name)},
 	}
 
 	result, err := c.Call(ctx, "zfs.snapshot.query", filters, map[string]interface{}{})

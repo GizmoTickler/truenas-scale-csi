@@ -1,3 +1,15 @@
+# v2.2.11
+
+Release 2025-11-26
+
+**Bug Fixes:**
+- Fixed regex pattern for `SnapshotFindByName` to include wildcards (BUG-006)
+  - The TrueNAS API `~` operator requires explicit wildcards to match substrings
+  - Updated filter to `.*@name$` to correctly match snapshot IDs
+- Fixed `DatasetList` to handle empty parent name correctly (BUG-007)
+  - Was sending `null` filters which caused API errors
+  - Now sends empty list `[]`
+
 # v2.2.10
 
 Release 2025-11-26

@@ -146,9 +146,9 @@ func (c *Client) DatasetUpdate(ctx context.Context, name string, params *Dataset
 
 // DatasetList lists datasets matching the given filters.
 func (c *Client) DatasetList(ctx context.Context, parentName string, limit int, offset int) ([]*Dataset, error) {
-	var filters [][]interface{}
+	filters := make([][]interface{}, 0)
 	if parentName != "" {
-		filters = [][]interface{}{{"id", "^", parentName + "/"}}
+		filters = append(filters, []interface{}{"id", "^", parentName + "/"})
 	}
 
 	options := map[string]interface{}{

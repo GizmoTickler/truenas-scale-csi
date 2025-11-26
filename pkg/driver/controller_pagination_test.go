@@ -17,7 +17,7 @@ type MockClientWithPagination struct {
 
 func (m *MockClientWithPagination) DatasetList(ctx context.Context, parentName string, limit int, offset int) ([]*truenas.Dataset, error) {
 	var allDatasets []*truenas.Dataset
-	for _, ds := range m.MockClient.Datasets {
+	for _, ds := range m.Datasets {
 		allDatasets = append(allDatasets, ds)
 	}
 
@@ -39,7 +39,7 @@ func (m *MockClientWithPagination) DatasetList(ctx context.Context, parentName s
 
 func (m *MockClientWithPagination) SnapshotListAll(ctx context.Context, parentDataset string, limit int, offset int) ([]*truenas.Snapshot, error) {
 	var allSnapshots []*truenas.Snapshot
-	for _, snap := range m.MockClient.Snapshots {
+	for _, snap := range m.Snapshots {
 		allSnapshots = append(allSnapshots, snap)
 	}
 
@@ -206,7 +206,7 @@ func (m *PaginatedMockClient) DatasetList(ctx context.Context, parentName string
 	// Iteration order of map is random, so we must sort or just accept random subset for generic count test.
 	// For strict pagination test, we need stable order.
 	// Let's just collect all and return a slice.
-	for _, ds := range m.MockClient.Datasets {
+	for _, ds := range m.Datasets {
 		allDatasets = append(allDatasets, ds)
 	}
 
@@ -229,7 +229,7 @@ func (m *PaginatedMockClient) DatasetList(ctx context.Context, parentName string
 
 func (m *PaginatedMockClient) SnapshotListAll(ctx context.Context, parentDataset string, limit int, offset int) ([]*truenas.Snapshot, error) {
 	var allSnapshots []*truenas.Snapshot
-	for _, snap := range m.MockClient.Snapshots {
+	for _, snap := range m.Snapshots {
 		allSnapshots = append(allSnapshots, snap)
 	}
 

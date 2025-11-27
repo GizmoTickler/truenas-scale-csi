@@ -43,7 +43,7 @@ data:
         - portal: {{ .Values.iscsi.portalGroupId | default 1 }}
           initiator: {{ .Values.iscsi.initiatorGroupId | default 1 }}
           authMethod: "NONE"
-          auth: 0
+
       extentBlocksize: 512
       extentRpm: "SSD"
       deviceWaitTimeout: {{ .Values.iscsi.deviceWaitTimeout | default 60 }}

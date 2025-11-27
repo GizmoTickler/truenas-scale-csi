@@ -1,3 +1,13 @@
+# v2.2.13
+
+Release 2025-11-26
+
+**Bug Fixes:**
+- Cleaned up iSCSI target group authentication handling (BUG-008)
+  - Updated configuration loader to correctly handle nullable `Auth` field
+  - Removed explicit `auth: 0` from Helm chart ConfigMap template
+  - This ensures `null` is sent to TrueNAS API when no authentication is configured, which is cleaner (though `0` is also accepted)
+
 # v2.2.12
 
 Release 2025-11-26

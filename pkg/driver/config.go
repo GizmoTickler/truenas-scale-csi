@@ -155,7 +155,7 @@ type ISCSITargetGroup struct {
 	AuthMethod string `yaml:"authMethod"`
 
 	// Auth is the auth group ID
-	Auth int `yaml:"auth"`
+	Auth *int `yaml:"auth"`
 }
 
 // NVMeoFConfig holds NVMe-oF configuration.

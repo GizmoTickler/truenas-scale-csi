@@ -133,9 +133,8 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 	targetGroups := []truenas.ISCSITargetGroup{}
 	for _, tg := range d.config.ISCSI.TargetGroups {
 		var auth *int
-		if tg.Auth > 0 {
-			val := tg.Auth
-			auth = &val
+		if tg.Auth != nil && *tg.Auth > 0 {
+			auth = tg.Auth
 		}
 		targetGroups = append(targetGroups, truenas.ISCSITargetGroup{
 			Portal:     tg.Portal,

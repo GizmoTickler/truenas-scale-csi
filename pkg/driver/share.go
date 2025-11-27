@@ -143,6 +143,8 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 			Auth:       auth,
 		})
 	}
+	// Create target
+	// We pass empty string for alias to avoid potential issues with long names or special characters
 	target, err := d.truenasClient.ISCSITargetCreate(ctx, iscsiName, "", "ISCSI", targetGroups)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to create iSCSI target: %v", err)

@@ -1,3 +1,13 @@
+# v2.2.14
+
+Release 2025-11-27
+
+**Bug Fixes:**
+- Fixed "Invalid params" error during iSCSI target creation (BUG-009)
+  - Stopped setting iSCSI Target Alias to the same value as the Target Name (IQN)
+  - The IQN is long and contains special characters which caused the TrueNAS API to hang or reject the request
+  - Now passing empty string for Alias, which is optional and safe
+
 # v2.2.13
 
 Release 2025-11-26

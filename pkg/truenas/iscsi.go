@@ -20,7 +20,7 @@ type ISCSITargetGroup struct {
 	Portal     int    `json:"portal"`
 	Initiator  int    `json:"initiator"`
 	AuthMethod string `json:"authmethod"`
-	Auth       int    `json:"auth"`
+	Auth       *int   `json:"auth"`
 }
 
 // ISCSIExtent represents an iSCSI extent from the TrueNAS API.
@@ -293,7 +293,8 @@ func parseISCSITarget(data interface{}) (*ISCSITarget, error) {
 					group.AuthMethod = v
 				}
 				if v, ok := gm["auth"].(float64); ok {
-					group.Auth = int(v)
+					val := int(v)
+					group.Auth = &val
 				}
 				target.Groups = append(target.Groups, group)
 			}

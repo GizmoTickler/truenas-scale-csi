@@ -1,3 +1,13 @@
+# v2.2.12
+
+Release 2025-11-26
+
+**Bug Fixes:**
+- Fixed "Invalid params" error during iSCSI target creation (BUG-008)
+  - The driver was sending `auth: 0` instead of `auth: null` when no CHAP authentication was configured
+  - TrueNAS API rejects `0` as an invalid authentication group ID
+  - Changed `Auth` field to nullable pointer to correctly send `null`
+
 # v2.2.11
 
 Release 2025-11-26

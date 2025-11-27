@@ -60,17 +60,39 @@ type ISCSIGlobalConfig struct {
 
 // ISCSITargetCreate creates a new iSCSI target.
 func (c *Client) ISCSITargetCreate(ctx context.Context, name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error) {
+	// Convert groups to maps, omitting auth field when nil (TrueNAS API prefers no field vs null)
+	groupMaps := make([]map[string]interface{}, len(groups))
+	for i, g := range groups {
+		gm := map[string]interface{}{
+			"portal":     g.Portal,
+			"initiator":  g.Initiator,
+			"authmethod": g.AuthMethod,
+		}
+		if g.Auth != nil {
+			gm["auth"] = *g.Auth
+		}
+		groupMaps[i] = gm
+	}
+
 	params := map[string]interface{}{
 		"name":   name,
-		"alias":  alias,
 		"mode":   mode,
-		"groups": groups,
+		"groups": groupMaps,
+	}
+	// Only include alias if non-empty
+	if alias != "" {
+		params["alias"] = alias
 	}
 
 	result, err := c.Call(ctx, "iscsi.target.create", params)
 	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return c.ISCSITargetFindByName(ctx, name)
+		// TrueNAS returns "Invalid params" when target already exists (not a helpful error message)
+		// Check if target exists and return it if so
+		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Invalid params") {
+			existing, findErr := c.ISCSITargetFindByName(ctx, name)
+			if findErr == nil && existing != nil {
+				return existing, nil
+			}
 		}
 		return nil, fmt.Errorf("failed to create iSCSI target: %w", err)
 	}
@@ -140,8 +162,13 @@ func (c *Client) ISCSIExtentCreate(ctx context.Context, name string, diskPath st
 
 	result, err := c.Call(ctx, "iscsi.extent.create", params)
 	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return c.ISCSIExtentFindByName(ctx, name)
+		// TrueNAS returns "Invalid params" when extent already exists
+		// Check if extent exists and return it if so
+		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Invalid params") {
+			existing, findErr := c.ISCSIExtentFindByName(ctx, name)
+			if findErr == nil && existing != nil {
+				return existing, nil
+			}
 		}
 		return nil, fmt.Errorf("failed to create iSCSI extent: %w", err)
 	}
@@ -206,8 +233,13 @@ func (c *Client) ISCSITargetExtentCreate(ctx context.Context, targetID int, exte
 
 	result, err := c.Call(ctx, "iscsi.targetextent.create", params)
 	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return c.ISCSITargetExtentFind(ctx, targetID, extentID)
+		// TrueNAS returns "Invalid params" when association already exists
+		// Check if association exists and return it if so
+		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Invalid params") {
+			existing, findErr := c.ISCSITargetExtentFind(ctx, targetID, extentID)
+			if findErr == nil && existing != nil {
+				return existing, nil
+			}
 		}
 		return nil, fmt.Errorf("failed to create target-extent association: %w", err)
 	}

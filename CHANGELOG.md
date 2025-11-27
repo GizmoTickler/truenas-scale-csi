@@ -1,3 +1,14 @@
+# v2.2.17
+
+Release 2025-11-27
+
+**Bug Fixes:**
+- Fixed iSCSI resource creation to be idempotent (BUG-010)
+  - TrueNAS returns "Invalid params" instead of "already exists" when resources exist
+  - Now handle this by checking if resources exist after receiving "Invalid params" error
+  - Applies to target, extent, and target-extent creation
+  - Also removed empty `alias` field and `auth: null` from API requests as TrueNAS prefers omitted fields
+
 # v2.2.16
 
 Release 2025-11-27

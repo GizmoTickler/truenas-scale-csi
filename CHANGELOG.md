@@ -1,3 +1,14 @@
+# v2.2.20
+
+Release 2025-11-27
+
+**Performance Improvements:**
+- Serialized iSCSI discovery and login operations per portal (PERF-006)
+  - Prevents TrueNAS from being overwhelmed when multiple volumes mount simultaneously
+  - Discovery results are cached for 30 seconds to avoid repeated calls
+  - Significantly reduces iSCSI connection times during bulk volume operations
+  - Fixes backup failures caused by iSCSI timeouts during VolSync batch operations
+
 # v2.2.19
 
 Release 2025-11-27

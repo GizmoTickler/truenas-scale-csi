@@ -9,10 +9,29 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/klog/v2"
 )
+
+// portalDiscoveryMutex serializes iSCSI discovery operations per portal.
+// This prevents TrueNAS from being overwhelmed when multiple volumes
+// try to discover targets simultaneously.
+var portalDiscoveryMutex sync.Map // map[portal]*sync.Mutex
+
+// getPortalMutex returns a mutex for the given portal, creating one if needed.
+func getPortalMutex(portal string) *sync.Mutex {
+	mutex, _ := portalDiscoveryMutex.LoadOrStore(portal, &sync.Mutex{})
+	return mutex.(*sync.Mutex)
+}
+
+// discoveryCache caches discovery results to avoid repeated calls.
+// Key is portal, value is timestamp of last successful discovery.
+var discoveryCache sync.Map // map[portal]time.Time
+
+// discoveryValidDuration is how long a cached discovery is considered valid.
+const discoveryValidDuration = 30 * time.Second
 
 // ISCSISession represents an active iSCSI session.
 type ISCSISession struct {
@@ -64,16 +83,17 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 		}
 	}
 
-	// Discover targets
+	// Serialized discovery with caching to prevent TrueNAS overload
+	// when multiple volumes mount simultaneously
 	discoveryStart := time.Now()
-	if err := iscsiDiscovery(portal); err != nil {
+	if err := iscsiDiscoverySerialized(portal); err != nil {
 		return "", fmt.Errorf("discovery failed: %w", err)
 	}
 	klog.Infof("iSCSI discovery completed in %v", time.Since(discoveryStart))
 
-	// Login to target
+	// Login to target (also serialized per portal to prevent overload)
 	loginStart := time.Now()
-	if err := iscsiLogin(portal, iqn); err != nil {
+	if err := iscsiLoginSerialized(portal, iqn); err != nil {
 		return "", fmt.Errorf("login failed: %w", err)
 	}
 	klog.Infof("iSCSI login completed in %v", time.Since(loginStart))
@@ -118,6 +138,42 @@ func ISCSIDisconnect(portal, iqn string) error {
 	return nil
 }
 
+// iscsiDiscoverySerialized performs iSCSI discovery with serialization and caching.
+// This prevents TrueNAS from being overwhelmed when multiple volumes try to
+// discover targets simultaneously. Discovery results are cached for 30 seconds.
+func iscsiDiscoverySerialized(portal string) error {
+	// Check cache first (outside of mutex for fast path)
+	if lastDiscovery, ok := discoveryCache.Load(portal); ok {
+		if time.Since(lastDiscovery.(time.Time)) < discoveryValidDuration {
+			klog.V(4).Infof("Using cached discovery for portal %s (age: %v)", portal, time.Since(lastDiscovery.(time.Time)))
+			return nil
+		}
+	}
+
+	// Acquire portal-specific mutex to serialize discovery
+	mutex := getPortalMutex(portal)
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	// Check cache again after acquiring lock (another goroutine may have done discovery)
+	if lastDiscovery, ok := discoveryCache.Load(portal); ok {
+		if time.Since(lastDiscovery.(time.Time)) < discoveryValidDuration {
+			klog.V(4).Infof("Using cached discovery for portal %s after lock (age: %v)", portal, time.Since(lastDiscovery.(time.Time)))
+			return nil
+		}
+	}
+
+	// Perform actual discovery
+	klog.Infof("Performing iSCSI discovery for portal %s (serialized)", portal)
+	if err := iscsiDiscovery(portal); err != nil {
+		return err
+	}
+
+	// Update cache
+	discoveryCache.Store(portal, time.Now())
+	return nil
+}
+
 // iscsiDiscovery performs iSCSI discovery on the target portal.
 func iscsiDiscovery(portal string) error {
 	cmd := exec.Command("iscsiadm", "-m", "discovery", "-t", "sendtargets", "-p", portal)
@@ -127,6 +183,17 @@ func iscsiDiscovery(portal string) error {
 	}
 	klog.V(4).Infof("Discovery output: %s", string(output))
 	return nil
+}
+
+// iscsiLoginSerialized performs iSCSI login with serialization per portal.
+// This prevents overwhelming TrueNAS when multiple volumes try to login simultaneously.
+func iscsiLoginSerialized(portal, iqn string) error {
+	// Acquire portal-specific mutex to serialize logins
+	mutex := getPortalMutex(portal)
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	return iscsiLogin(portal, iqn)
 }
 
 // iscsiLogin logs into an iSCSI target.

@@ -30,7 +30,7 @@ func main() {
 		fmt.Printf("Failed to create client: %v\n", err)
 		os.Exit(1)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx := context.Background()
 

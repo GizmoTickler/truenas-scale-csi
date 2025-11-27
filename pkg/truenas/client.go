@@ -65,17 +65,18 @@ func IsConnectionError(err error) bool {
 
 // ClientConfig holds the configuration for the TrueNAS client.
 type ClientConfig struct {
-	Host              string
-	Port              int
-	Protocol          string
-	APIKey            string
-	AllowInsecure     bool
-	Timeout           time.Duration
-	ConnectTimeout    time.Duration
-	MaxRetries        int           // Maximum number of connection retries (default: 3)
-	RetryInterval     time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
-	HeartbeatInterval time.Duration // Interval for WebSocket heartbeat (default: 30s)
-	MaxConnections    int           // Maximum number of concurrent connections (default: 5)
+	Host               string
+	Port               int
+	Protocol           string
+	APIKey             string
+	AllowInsecure      bool
+	Timeout            time.Duration
+	ConnectTimeout     time.Duration
+	MaxRetries         int           // Maximum number of connection retries (default: 3)
+	RetryInterval      time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
+	HeartbeatInterval  time.Duration // Interval for WebSocket heartbeat (default: 30s)
+	MaxConnections     int           // Maximum number of concurrent connections (default: 5)
+	MaxConcurrentReqs  int           // Maximum number of concurrent API requests (default: 10)
 }
 
 // writeRequest represents a request to be written to the WebSocket.
@@ -140,9 +141,10 @@ func NewConnection(id int, cfg *ClientConfig) *Connection {
 
 // Client is a TrueNAS API client using WebSocket JSON-RPC 2.0 with connection pooling.
 type Client struct {
-	config *ClientConfig
-	pool   []*Connection
-	next   uint64 // For round-robin selection
+	config    *ClientConfig
+	pool      []*Connection
+	next      uint64         // For round-robin selection
+	semaphore chan struct{}  // Limits concurrent requests to prevent TrueNAS overload
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.
@@ -204,10 +206,14 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	if cfg.MaxConnections == 0 {
 		cfg.MaxConnections = 5
 	}
+	if cfg.MaxConcurrentReqs == 0 {
+		cfg.MaxConcurrentReqs = 10 // Limit concurrent requests to prevent overwhelming TrueNAS
+	}
 
 	client := &Client{
-		config: cfg,
-		pool:   make([]*Connection, cfg.MaxConnections),
+		config:    cfg,
+		pool:      make([]*Connection, cfg.MaxConnections),
+		semaphore: make(chan struct{}, cfg.MaxConcurrentReqs),
 	}
 
 	// Initialize connection pool
@@ -714,7 +720,17 @@ func (c *Client) Call(ctx context.Context, method string, params ...interface{})
 }
 
 // CallWithContext makes a JSON-RPC call with a context using the connection pool.
+// Uses a semaphore to limit concurrent requests and prevent overwhelming TrueNAS.
 func (c *Client) CallWithContext(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
+	// Acquire semaphore slot (limit concurrent requests)
+	select {
+	case c.semaphore <- struct{}{}:
+		// Got a slot, continue
+	case <-ctx.Done():
+		return nil, fmt.Errorf("context cancelled while waiting for request slot: %w", ctx.Err())
+	}
+	defer func() { <-c.semaphore }() // Release slot when done
+
 	// Round-robin selection
 	idx := atomic.AddUint64(&c.next, 1) % uint64(len(c.pool))
 	conn := c.pool[idx]

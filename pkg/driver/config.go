@@ -54,6 +54,9 @@ type TrueNASConfig struct {
 
 	// ConnectTimeout is the timeout for establishing connections in seconds (default: 10)
 	ConnectTimeout int `yaml:"connectTimeout"`
+
+	// MaxConcurrentRequests limits concurrent API requests to prevent overwhelming TrueNAS (default: 10)
+	MaxConcurrentRequests int `yaml:"maxConcurrentRequests"`
 }
 
 // ZFSConfig holds ZFS dataset configuration.

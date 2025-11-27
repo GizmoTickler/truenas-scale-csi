@@ -1,3 +1,14 @@
+# v2.2.16
+
+Release 2025-11-27
+
+**Features:**
+- Added request rate limiting to prevent overwhelming TrueNAS API (PERF-002)
+  - Added `maxConcurrentRequests` config option (default: 10) to limit concurrent API requests
+  - Uses a semaphore-based approach to queue requests when TrueNAS is under load
+  - Prevents timeouts and "Method call error" responses during high PVC provisioning activity
+  - Configurable via Helm values: `truenas.maxConcurrentRequests`
+
 # v2.2.15
 
 Release 2025-11-27

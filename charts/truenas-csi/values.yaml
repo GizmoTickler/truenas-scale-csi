@@ -106,6 +106,13 @@ truenas:
   # Secret should have keys: api-key OR username and password
   existingSecret: ""
 
+  # Request timeout in seconds (default: 60)
+  requestTimeout: 60
+
+  # Maximum concurrent API requests to TrueNAS (default: 10)
+  # Lower this if TrueNAS becomes overloaded with many PVC operations
+  maxConcurrentRequests: 10
+
 # ZFS configuration
 zfs:
   # Parent dataset for volumes (required)

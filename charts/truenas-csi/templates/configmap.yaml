@@ -17,8 +17,9 @@ data:
       protocol: {{ if .Values.truenas.secure }}https{{ else }}http{{ end }}
       apiKey: $TRUENAS_API_KEY
       allowInsecure: {{ .Values.truenas.skipTLSVerify }}
-      requestTimeout: 60
+      requestTimeout: {{ .Values.truenas.requestTimeout | default 60 }}
       connectTimeout: 10
+      maxConcurrentRequests: {{ .Values.truenas.maxConcurrentRequests | default 10 }}
 
     # ZFS dataset configuration
     zfs:

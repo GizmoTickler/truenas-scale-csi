@@ -76,13 +76,14 @@ func NewDriver(cfg *DriverConfig) (*Driver, error) {
 
 	// Create TrueNAS API client
 	truenasClient, err := truenas.NewClient(&truenas.ClientConfig{
-		Host:           cfg.Config.TrueNAS.Host,
-		Port:           cfg.Config.TrueNAS.Port,
-		Protocol:       cfg.Config.TrueNAS.Protocol,
-		APIKey:         cfg.Config.TrueNAS.APIKey,
-		AllowInsecure:  cfg.Config.TrueNAS.AllowInsecure,
-		Timeout:        time.Duration(cfg.Config.TrueNAS.RequestTimeout) * time.Second,
-		ConnectTimeout: time.Duration(cfg.Config.TrueNAS.ConnectTimeout) * time.Second,
+		Host:              cfg.Config.TrueNAS.Host,
+		Port:              cfg.Config.TrueNAS.Port,
+		Protocol:          cfg.Config.TrueNAS.Protocol,
+		APIKey:            cfg.Config.TrueNAS.APIKey,
+		AllowInsecure:     cfg.Config.TrueNAS.AllowInsecure,
+		Timeout:           time.Duration(cfg.Config.TrueNAS.RequestTimeout) * time.Second,
+		ConnectTimeout:    time.Duration(cfg.Config.TrueNAS.ConnectTimeout) * time.Second,
+		MaxConcurrentReqs: cfg.Config.TrueNAS.MaxConcurrentRequests,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TrueNAS client: %w", err)

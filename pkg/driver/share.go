@@ -122,9 +122,12 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 
 	// Generate iSCSI name
 	iscsiName := path.Base(datasetName)
-	if d.config.ISCSI.NamePrefix != "" {
-		iscsiName = d.config.ISCSI.NamePrefix + iscsiName
-	}
+	// We do NOT prepend the NamePrefix (IQN) here because TrueNAS API seems to fail/hang
+	// if we provide the full IQN as the name. We let TrueNAS handle the IQN generation
+	// or treat the name as a suffix.
+	// if d.config.ISCSI.NamePrefix != "" {
+	// 	iscsiName = d.config.ISCSI.NamePrefix + iscsiName
+	// }
 	if d.config.ISCSI.NameSuffix != "" {
 		iscsiName = iscsiName + d.config.ISCSI.NameSuffix
 	}

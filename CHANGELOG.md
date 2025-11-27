@@ -1,3 +1,13 @@
+# v2.2.15
+
+Release 2025-11-27
+
+**Bug Fixes:**
+- Fixed "Invalid params" error during iSCSI target creation (BUG-009)
+  - Stopped prepending the IQN prefix to the iSCSI Target Name
+  - The driver was manually adding the IQN prefix, resulting in a long/complex name that caused the TrueNAS API to hang or reject the request
+  - Now passing the short name (e.g., `pvc-UUID`), allowing TrueNAS to handle IQN generation
+
 # v2.2.14
 
 Release 2025-11-27

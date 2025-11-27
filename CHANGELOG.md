@@ -1,3 +1,15 @@
+# v2.2.18
+
+Release 2025-11-27
+
+**Bug Fixes:**
+- Fixed snapshot deletion to handle TrueNAS "Invalid params" errors (BUG-011)
+  - TrueNAS returns "Invalid params" when deleting non-existent snapshots (instead of "not found")
+  - Also returns "Invalid params" when snapshot has clones and can't be deleted
+  - Now check if snapshot exists after "Invalid params" error to distinguish between these cases
+  - Non-existent snapshots are treated as successful deletion (idempotent)
+  - Snapshots with clones return a meaningful error message
+
 # v2.2.17
 
 Release 2025-11-27

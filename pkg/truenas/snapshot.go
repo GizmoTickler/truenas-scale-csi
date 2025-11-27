@@ -57,6 +57,20 @@ func (c *Client) SnapshotDelete(ctx context.Context, snapshotID string, defer_ b
 			strings.Contains(err.Error(), "not found") {
 			return nil
 		}
+		// TrueNAS returns "Invalid params" for multiple conditions:
+		// 1. Snapshot doesn't exist
+		// 2. Snapshot has clones and can't be deleted
+		// Check if snapshot exists to distinguish between these cases
+		if strings.Contains(err.Error(), "Invalid params") {
+			// Try to get the snapshot - if it doesn't exist, treat as success
+			_, getErr := c.SnapshotGet(ctx, snapshotID)
+			if getErr != nil {
+				// Snapshot doesn't exist, treat delete as successful
+				return nil
+			}
+			// Snapshot exists but can't be deleted (likely has clones)
+			return fmt.Errorf("failed to delete snapshot (may have clones): %w", err)
+		}
 		return fmt.Errorf("failed to delete snapshot: %w", err)
 	}
 

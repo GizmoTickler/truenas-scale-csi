@@ -397,13 +397,8 @@ func getISCSISessions() ([]ISCSISession, error) {
 	return sessions, nil
 }
 
-// waitForISCSIDevice waits for the iSCSI device to appear in /dev.
-// Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
-func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (string, error) {
-	return waitForISCSIDeviceWithContext(context.Background(), portal, iqn, lun, timeout)
-}
-
 // waitForISCSIDeviceWithContext waits for the iSCSI device with context support.
+// Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
 func waitForISCSIDeviceWithContext(ctx context.Context, portal, iqn string, lun int, timeout time.Duration) (string, error) {
 	start := time.Now()
 	pollInterval := 50 * time.Millisecond

@@ -33,6 +33,17 @@ var discoveryCache sync.Map // map[portal]time.Time
 // discoveryValidDuration is how long a cached discovery is considered valid.
 const discoveryValidDuration = 30 * time.Second
 
+// maxDiscoveryRetries is the maximum number of discovery retries when a target is not found.
+// This handles the case where TrueNAS takes time to propagate new targets to the iSCSI daemon.
+const maxDiscoveryRetries = 5
+
+// initialDiscoveryRetryDelay is the initial delay before retrying discovery.
+// We start with a longer delay to give TrueNAS time to propagate the target.
+const initialDiscoveryRetryDelay = 2 * time.Second
+
+// maxDiscoveryRetryDelay caps the exponential backoff.
+const maxDiscoveryRetryDelay = 10 * time.Second
+
 // invalidateDiscoveryCache removes the cached discovery for a portal.
 // This should be called when a login fails due to "target not found" to force
 // a fresh discovery that includes newly created targets.
@@ -122,29 +133,53 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 	klog.Infof("iSCSI discovery completed in %v", time.Since(discoveryStart))
 
 	// Login to target (also serialized per portal to prevent overload)
-	// If login fails due to target not found, invalidate cache and retry with fresh discovery
+	// If login fails due to target not found, retry with exponential backoff.
+	// TrueNAS may take time to propagate newly created targets to the iSCSI daemon.
 	loginStart := time.Now()
-	if err := iscsiLoginSerialized(portal, iqn); err != nil {
-		// Check if this is a "target not found" error - the target may have been
-		// created after our cached discovery. Invalidate cache and retry once.
-		if isTargetNotFoundError(err) {
-			klog.Warningf("iSCSI login failed (target not found), invalidating discovery cache and retrying: %v", err)
+	loginErr := iscsiLoginSerialized(portal, iqn)
+	if loginErr != nil && isTargetNotFoundError(loginErr) {
+		klog.Warningf("iSCSI login failed (target not found), will retry with fresh discovery: %v", loginErr)
+
+		retryDelay := initialDiscoveryRetryDelay
+		for attempt := 1; attempt <= maxDiscoveryRetries; attempt++ {
+			// Wait before retry to give TrueNAS time to propagate the target
+			klog.Infof("Waiting %v before discovery retry %d/%d for %s", retryDelay, attempt, maxDiscoveryRetries, iqn)
+			time.Sleep(retryDelay)
+
+			// Invalidate cache and perform fresh discovery
 			invalidateDiscoveryCache(portal)
-
-			// Perform fresh discovery
 			if discoverErr := iscsiDiscoverySerialized(portal); discoverErr != nil {
-				return "", fmt.Errorf("fresh discovery failed after target not found: %w", discoverErr)
-			}
-			klog.Infof("Fresh iSCSI discovery completed, retrying login")
+				klog.Warningf("Discovery retry %d failed: %v", attempt, discoverErr)
+				// Continue to next retry
+			} else {
+				klog.Infof("Fresh iSCSI discovery completed on attempt %d, retrying login", attempt)
 
-			// Retry login
-			if retryErr := iscsiLoginSerialized(portal, iqn); retryErr != nil {
-				return "", fmt.Errorf("login failed after fresh discovery: %w", retryErr)
+				// Retry login
+				loginErr = iscsiLoginSerialized(portal, iqn)
+				if loginErr == nil {
+					klog.Infof("iSCSI login succeeded after %d discovery retries", attempt)
+					break
+				}
+
+				if !isTargetNotFoundError(loginErr) {
+					// Different error, don't retry
+					return "", fmt.Errorf("login failed after discovery retry %d: %w", attempt, loginErr)
+				}
+				klog.Warningf("Login retry %d still failed (target not found): %v", attempt, loginErr)
 			}
-			klog.Infof("iSCSI login succeeded after fresh discovery")
-		} else {
-			return "", fmt.Errorf("login failed: %w", err)
+
+			// Exponential backoff with cap
+			retryDelay *= 2
+			if retryDelay > maxDiscoveryRetryDelay {
+				retryDelay = maxDiscoveryRetryDelay
+			}
 		}
+
+		if loginErr != nil {
+			return "", fmt.Errorf("login failed after %d discovery retries: %w", maxDiscoveryRetries, loginErr)
+		}
+	} else if loginErr != nil {
+		return "", fmt.Errorf("login failed: %w", loginErr)
 	}
 	klog.Infof("iSCSI login completed in %v", time.Since(loginStart))
 

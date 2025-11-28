@@ -334,9 +334,10 @@ func (d *Driver) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest)
 		}
 	}
 
-	// Delete share first (errors are non-fatal, log and continue)
+	// Delete share first (errors are fatal to prevent orphaned targets)
 	if err := d.deleteShare(ctx, datasetName, shareType); err != nil {
-		klog.Warningf("Failed to delete share for volume %s: %v", volumeID, err)
+		klog.Errorf("Failed to delete share for volume %s: %v", volumeID, err)
+		return nil, status.Errorf(codes.Internal, "failed to delete share: %v", err)
 	}
 
 	// Delete dataset (recursive to handle snapshots, force to ignore busy state)

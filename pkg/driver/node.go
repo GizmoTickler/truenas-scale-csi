@@ -472,7 +472,7 @@ func (d *Driver) stageISCSIVolume(ctx context.Context, volumeContext map[string]
 	connectOpts := &util.ISCSIConnectOptions{
 		DeviceTimeout: time.Duration(d.config.ISCSI.DeviceWaitTimeout) * time.Second,
 	}
-	devicePath, err := util.ISCSIConnectWithOptions(portal, iqn, lun, connectOpts)
+	devicePath, err := util.ISCSIConnectWithOptions(ctx, portal, iqn, lun, connectOpts)
 	if err != nil {
 		return status.Errorf(codes.Internal, "failed to connect iSCSI: %v", err)
 	}

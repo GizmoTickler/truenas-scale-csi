@@ -1,3 +1,16 @@
+# v2.2.25
+
+Release 2025-11-28
+
+**Bug Fixes:**
+- Fixed driver hangs on unreachable iSCSI portals (BUG-013)
+  - Added 10-second timeout to `iscsiadm` discovery and login commands
+  - Prevents "operation already in progress" errors when portals are unreachable
+- Fixed iSCSI target leaks during volume deletion (BUG-014)
+  - Made share deletion failure fatal in `DeleteVolume`
+  - Ensures targets are properly cleaned up before the dataset is deleted
+  - Prevents orphaned targets when TrueNAS is under load or experiencing API issues
+
 # v2.2.20
 
 Release 2025-11-27

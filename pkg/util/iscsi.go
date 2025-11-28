@@ -2,6 +2,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,6 +44,9 @@ const initialDiscoveryRetryDelay = 2 * time.Second
 
 // maxDiscoveryRetryDelay caps the exponential backoff.
 const maxDiscoveryRetryDelay = 10 * time.Second
+
+// iscsiCommandTimeout is the timeout for iscsiadm commands to prevent hangs.
+const iscsiCommandTimeout = 10 * time.Second
 
 // invalidateDiscoveryCache removes the cached discovery for a portal.
 // This should be called when a login fails due to "target not found" to force
@@ -91,11 +95,11 @@ type ISCSIConnectOptions struct {
 
 // ISCSIConnect connects to an iSCSI target and returns the device path.
 func ISCSIConnect(portal, iqn string, lun int) (string, error) {
-	return ISCSIConnectWithOptions(portal, iqn, lun, nil)
+	return ISCSIConnectWithOptions(context.Background(), portal, iqn, lun, nil)
 }
 
 // ISCSIConnectWithOptions connects to an iSCSI target with configurable options.
-func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOptions) (string, error) {
+func ISCSIConnectWithOptions(ctx context.Context, portal, iqn string, lun int, opts *ISCSIConnectOptions) (string, error) {
 	start := time.Now()
 	klog.Infof("ISCSIConnect: portal=%s, iqn=%s, lun=%d", portal, iqn, lun)
 
@@ -127,7 +131,7 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 	// Serialized discovery with caching to prevent TrueNAS overload
 	// when multiple volumes mount simultaneously
 	discoveryStart := time.Now()
-	if err := iscsiDiscoverySerialized(portal); err != nil {
+	if err := iscsiDiscoverySerialized(ctx, portal); err != nil {
 		return "", fmt.Errorf("discovery failed: %w", err)
 	}
 	klog.Infof("iSCSI discovery completed in %v", time.Since(discoveryStart))
@@ -136,7 +140,7 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 	// If login fails due to target not found, retry with exponential backoff.
 	// TrueNAS may take time to propagate newly created targets to the iSCSI daemon.
 	loginStart := time.Now()
-	loginErr := iscsiLoginSerialized(portal, iqn)
+	loginErr := iscsiLoginSerialized(ctx, portal, iqn)
 	if loginErr != nil && isTargetNotFoundError(loginErr) {
 		klog.Warningf("iSCSI login failed for %s (target not found in discovery), will retry with fresh discovery: %v", iqn, loginErr)
 
@@ -149,7 +153,7 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 
 			// Invalidate cache and perform fresh discovery
 			invalidateDiscoveryCache(portal)
-			if discoverErr := iscsiDiscoverySerialized(portal); discoverErr != nil {
+			if discoverErr := iscsiDiscoverySerialized(ctx, portal); discoverErr != nil {
 				klog.Warningf("iSCSI retry %d/%d: discovery failed for portal %s: %v", attempt, maxDiscoveryRetries, portal, discoverErr)
 				// Continue to next retry
 			} else {
@@ -157,7 +161,7 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 					attempt, maxDiscoveryRetries, portal, iqn)
 
 				// Retry login
-				loginErr = iscsiLoginSerialized(portal, iqn)
+				loginErr = iscsiLoginSerialized(ctx, portal, iqn)
 				if loginErr == nil {
 					klog.Infof("iSCSI login succeeded for %s after %d discovery retries (total elapsed: %v)",
 						iqn, attempt, time.Since(start))
@@ -231,7 +235,7 @@ func ISCSIDisconnect(portal, iqn string) error {
 // iscsiDiscoverySerialized performs iSCSI discovery with serialization and caching.
 // This prevents TrueNAS from being overwhelmed when multiple volumes try to
 // discover targets simultaneously. Discovery results are cached for 30 seconds.
-func iscsiDiscoverySerialized(portal string) error {
+func iscsiDiscoverySerialized(ctx context.Context, portal string) error {
 	// Check cache first (outside of mutex for fast path)
 	if lastDiscovery, ok := discoveryCache.Load(portal); ok {
 		if time.Since(lastDiscovery.(time.Time)) < discoveryValidDuration {
@@ -255,7 +259,7 @@ func iscsiDiscoverySerialized(portal string) error {
 
 	// Perform actual discovery
 	klog.Infof("Performing iSCSI discovery for portal %s (serialized)", portal)
-	if err := iscsiDiscovery(portal); err != nil {
+	if err := iscsiDiscovery(ctx, portal); err != nil {
 		return err
 	}
 
@@ -265,8 +269,12 @@ func iscsiDiscoverySerialized(portal string) error {
 }
 
 // iscsiDiscovery performs iSCSI discovery on the target portal.
-func iscsiDiscovery(portal string) error {
-	cmd := exec.Command("iscsiadm", "-m", "discovery", "-t", "sendtargets", "-p", portal)
+func iscsiDiscovery(ctx context.Context, portal string) error {
+	// Add timeout to prevent hangs on unreachable portals
+	ctx, cancel := context.WithTimeout(ctx, iscsiCommandTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "iscsiadm", "-m", "discovery", "-t", "sendtargets", "-p", portal)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("discovery command failed: %v, output: %s", err, string(output))
@@ -284,17 +292,17 @@ func getLoginSemaphore(portal string) chan struct{} {
 // iscsiLoginSerialized performs iSCSI login with limited concurrency.
 // Allows up to maxConcurrentLogins (2) concurrent logins per portal to prevent
 // overwhelming TrueNAS while still allowing some parallelism.
-func iscsiLoginSerialized(portal, iqn string) error {
+func iscsiLoginSerialized(ctx context.Context, portal, iqn string) error {
 	// Acquire semaphore slot (blocks if maxConcurrentLogins already in progress)
 	sem := getLoginSemaphore(portal)
 	sem <- struct{}{}
 	defer func() { <-sem }()
 
-	return iscsiLogin(portal, iqn)
+	return iscsiLogin(ctx, portal, iqn)
 }
 
 // iscsiLogin logs into an iSCSI target.
-func iscsiLogin(portal, iqn string) error {
+func iscsiLogin(ctx context.Context, portal, iqn string) error {
 	// Check if already logged in
 	sessions, err := getISCSISessions()
 	if err != nil {
@@ -309,7 +317,11 @@ func iscsiLogin(portal, iqn string) error {
 	}
 
 	// Login to target
-	cmd := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-p", portal, "--login")
+	// Add timeout to prevent hangs on unreachable portals
+	ctx, cancel := context.WithTimeout(ctx, iscsiCommandTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-p", portal, "--login")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Check if already logged in

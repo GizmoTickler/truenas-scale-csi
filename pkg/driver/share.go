@@ -363,6 +363,15 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 		klog.Warningf("Failed to store iSCSI target-extent ID: %v", err)
 	}
 
+	// Reload iSCSI service to ensure the new target is immediately discoverable.
+	// This prevents race conditions where the node tries to discover the target
+	// before TrueNAS's iSCSI daemon has picked up the configuration change.
+	klog.V(4).Infof("Reloading iSCSI service to ensure target is discoverable")
+	if err := d.truenasClient.ServiceReload(ctx, "iscsitarget"); err != nil {
+		// Non-fatal: the service might auto-reload, and node has retry logic
+		klog.V(4).Infof("iSCSI service reload returned (may be normal): %v", err)
+	}
+
 	klog.Infof("iSCSI share setup complete for %s: target=%d, extent=%d, targetextent=%d (took %v)",
 		datasetName, targetID, extentID, targetExtent.ID, time.Since(start))
 	return nil

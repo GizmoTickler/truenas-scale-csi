@@ -811,3 +811,24 @@ func (c *Client) IsConnected() bool {
 	}
 	return false
 }
+
+// ServiceReload reloads a TrueNAS service configuration.
+// This is useful for forcing services like iSCSI to pick up new configuration
+// after creating targets/extents via the API.
+// Common service names: "iscsitarget", "nfs", "cifs", "nvmeof"
+//
+// NOTE: This only attempts reload (not restart) to avoid disrupting existing
+// sessions. If reload fails, we log and continue - the caller should have
+// retry logic to handle propagation delays.
+func (c *Client) ServiceReload(ctx context.Context, service string) error {
+	klog.V(4).Infof("Reloading service: %s", service)
+	_, err := c.Call(ctx, "service.reload", service)
+	if err != nil {
+		// Don't try restart - it could disrupt existing sessions/connections.
+		// Just log and continue; the node-side retry logic will handle propagation delays.
+		klog.V(4).Infof("service.reload failed for %s (this is often normal, target may still propagate): %v", service, err)
+		return nil
+	}
+	klog.Infof("Service %s reloaded successfully", service)
+	return nil
+}

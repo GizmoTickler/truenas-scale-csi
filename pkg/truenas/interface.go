@@ -47,6 +47,9 @@ type ClientInterface interface {
 	NFSShareList(ctx context.Context) ([]*NFSShare, error)
 	NFSShareUpdate(ctx context.Context, id int, params map[string]interface{}) (*NFSShare, error)
 
+	// Service methods
+	ServiceReload(ctx context.Context, service string) error
+
 	// iSCSI methods
 	ISCSITargetCreate(ctx context.Context, name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error)
 	ISCSITargetDelete(ctx context.Context, id int, force bool) error

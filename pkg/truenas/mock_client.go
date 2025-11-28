@@ -379,6 +379,11 @@ func (m *MockClient) NFSShareUpdate(ctx context.Context, id int, params map[stri
 	return m.NFSShares[id], nil
 }
 
+// Service methods
+func (m *MockClient) ServiceReload(ctx context.Context, service string) error {
+	return nil
+}
+
 // iSCSI methods
 func (m *MockClient) ISCSITargetCreate(ctx context.Context, name string, alias string, mode string, groups []ISCSITargetGroup) (*ISCSITarget, error) {
 	m.mu.Lock()

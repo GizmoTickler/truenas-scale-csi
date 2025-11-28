@@ -46,7 +46,9 @@ const initialDiscoveryRetryDelay = 2 * time.Second
 const maxDiscoveryRetryDelay = 10 * time.Second
 
 // iscsiCommandTimeout is the timeout for iscsiadm commands to prevent hangs.
-const iscsiCommandTimeout = 10 * time.Second
+// This is set to 30 seconds to accommodate systems with many stale sessions,
+// where discovery can take longer due to iscsiadm processing each session.
+const iscsiCommandTimeout = 30 * time.Second
 
 // invalidateDiscoveryCache removes the cached discovery for a portal.
 // This should be called when a login fails due to "target not found" to force
@@ -109,6 +111,13 @@ func ISCSIConnectWithOptions(ctx context.Context, portal, iqn string, lun int, o
 		timeout = opts.DeviceTimeout
 	}
 
+	// Check context early
+	select {
+	case <-ctx.Done():
+		return "", fmt.Errorf("iSCSI connect cancelled before starting: %w", ctx.Err())
+	default:
+	}
+
 	// Check if already logged in - skip discovery if session exists
 	sessions, err := getISCSISessions()
 	if err != nil {
@@ -118,7 +127,7 @@ func ISCSIConnectWithOptions(ctx context.Context, portal, iqn string, lun int, o
 			if session.IQN == iqn {
 				klog.Infof("Session already exists for %s, skipping discovery (elapsed: %v)", iqn, time.Since(start))
 				// Session exists, just wait for device
-				devicePath, err := waitForISCSIDevice(portal, iqn, lun, timeout)
+				devicePath, err := waitForISCSIDeviceWithContext(ctx, portal, iqn, lun, timeout)
 				if err != nil {
 					return "", fmt.Errorf("device not found after %v: %w", timeout, err)
 				}
@@ -146,10 +155,23 @@ func ISCSIConnectWithOptions(ctx context.Context, portal, iqn string, lun int, o
 
 		retryDelay := initialDiscoveryRetryDelay
 		for attempt := 1; attempt <= maxDiscoveryRetries; attempt++ {
+			// Check context before retrying
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("iSCSI login cancelled during retry: %w", ctx.Err())
+			default:
+			}
+
 			// Wait before retry to give TrueNAS time to propagate the target
 			klog.Infof("iSCSI retry %d/%d: waiting %v before fresh discovery for %s (elapsed: %v)",
 				attempt, maxDiscoveryRetries, retryDelay, iqn, time.Since(start))
-			time.Sleep(retryDelay)
+
+			// Use a select to allow cancellation during the sleep
+			select {
+			case <-time.After(retryDelay):
+			case <-ctx.Done():
+				return "", fmt.Errorf("iSCSI login cancelled during retry delay: %w", ctx.Err())
+			}
 
 			// Invalidate cache and perform fresh discovery
 			invalidateDiscoveryCache(portal)
@@ -194,7 +216,7 @@ func ISCSIConnectWithOptions(ctx context.Context, portal, iqn string, lun int, o
 
 	// Wait for device to appear
 	deviceStart := time.Now()
-	devicePath, err := waitForISCSIDevice(portal, iqn, lun, timeout)
+	devicePath, err := waitForISCSIDeviceWithContext(ctx, portal, iqn, lun, timeout)
 	if err != nil {
 		return "", fmt.Errorf("device not found after %v: %w", timeout, err)
 	}
@@ -274,7 +296,12 @@ func iscsiDiscovery(ctx context.Context, portal string) error {
 	ctx, cancel := context.WithTimeout(ctx, iscsiCommandTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "iscsiadm", "-m", "discovery", "-t", "sendtargets", "-p", portal)
+	// Use "-o new" to only add new records without attempting to delete old ones.
+	// Without this flag, iscsiadm tries to clean up stale sessions during discovery,
+	// which outputs warnings like "This command will remove the record... but a session
+	// is using it" for EACH stale session. On systems with hundreds of stale sessions,
+	// this can cause discovery to take >10 seconds and hit the timeout.
+	cmd := exec.CommandContext(ctx, "iscsiadm", "-m", "discovery", "-t", "sendtargets", "-p", portal, "-o", "new")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("discovery command failed: %v, output: %s", err, string(output))
@@ -373,11 +400,23 @@ func getISCSISessions() ([]ISCSISession, error) {
 // waitForISCSIDevice waits for the iSCSI device to appear in /dev.
 // Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
 func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (string, error) {
+	return waitForISCSIDeviceWithContext(context.Background(), portal, iqn, lun, timeout)
+}
+
+// waitForISCSIDeviceWithContext waits for the iSCSI device with context support.
+func waitForISCSIDeviceWithContext(ctx context.Context, portal, iqn string, lun int, timeout time.Duration) (string, error) {
 	start := time.Now()
 	pollInterval := 50 * time.Millisecond
 	maxPollInterval := 500 * time.Millisecond
 
 	for {
+		// Check context first
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("cancelled waiting for device (iqn=%s, lun=%d): %w", iqn, lun, ctx.Err())
+		default:
+		}
+
 		devicePath, err := findISCSIDevice(iqn, lun)
 		if err == nil && devicePath != "" {
 			return devicePath, nil
@@ -387,7 +426,13 @@ func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (str
 			return "", fmt.Errorf("timeout waiting for device (iqn=%s, lun=%d)", iqn, lun)
 		}
 
-		time.Sleep(pollInterval)
+		// Use select for cancellable sleep
+		select {
+		case <-time.After(pollInterval):
+		case <-ctx.Done():
+			return "", fmt.Errorf("cancelled waiting for device (iqn=%s, lun=%d): %w", iqn, lun, ctx.Err())
+		}
+
 		// Exponential backoff: 50ms -> 100ms -> 200ms -> 400ms -> 500ms (max)
 		pollInterval *= 2
 		if pollInterval > maxPollInterval {
@@ -605,6 +650,136 @@ func FlushDeviceBuffers(devicePath string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to flush buffers: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// CleanupStaleISCSISessions removes iSCSI sessions that are no longer in use.
+// A session is considered stale if no devices exist for it.
+// This should be called periodically or after volume cleanup to prevent
+// session accumulation that can slow down discovery operations.
+func CleanupStaleISCSISessions(portal string) error {
+	sessions, err := getISCSISessions()
+	if err != nil {
+		return fmt.Errorf("failed to get sessions: %w", err)
+	}
+
+	var cleanedCount int
+	for _, session := range sessions {
+		// Check if this session has any active devices
+		sessionDirs, err := filepath.Glob("/sys/class/iscsi_session/session*")
+		if err != nil {
+			continue
+		}
+
+		hasDevice := false
+		for _, sessionDir := range sessionDirs {
+			targetNamePath := filepath.Join(sessionDir, "targetname")
+			targetNameBytes, err := os.ReadFile(targetNamePath)
+			if err != nil {
+				continue
+			}
+			targetName := strings.TrimSpace(string(targetNameBytes))
+			if targetName == session.IQN {
+				// Check if this session has any block devices
+				sessionName := filepath.Base(sessionDir)
+				var sessionNum int
+				if _, err := fmt.Sscanf(sessionName, "session%d", &sessionNum); err != nil {
+					continue
+				}
+				hostPattern := fmt.Sprintf("/sys/class/iscsi_host/host*/device/session%d", sessionNum)
+				hostDirs, _ := filepath.Glob(hostPattern)
+				if len(hostDirs) > 0 {
+					hostDir := filepath.Dir(filepath.Dir(hostDirs[0]))
+					hostName := filepath.Base(hostDir)
+					var hostNum int
+					if _, err := fmt.Sscanf(hostName, "host%d", &hostNum); err == nil {
+						blockPattern := fmt.Sprintf("/sys/class/scsi_device/%d:0:0:*/device/block/*", hostNum)
+						blocks, _ := filepath.Glob(blockPattern)
+						if len(blocks) > 0 {
+							hasDevice = true
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if !hasDevice {
+			klog.V(4).Infof("Cleaning up stale iSCSI session for %s (no devices found)", session.IQN)
+			// Logout and delete node record
+			if err := ISCSIDisconnect(session.TargetPortal, session.IQN); err != nil {
+				klog.Warningf("Failed to disconnect stale session %s: %v", session.IQN, err)
+			} else {
+				cleanedCount++
+			}
+		}
+	}
+
+	if cleanedCount > 0 {
+		klog.Infof("Cleaned up %d stale iSCSI sessions", cleanedCount)
+	}
+	return nil
+}
+
+// CleanupOrphanedNodeRecords removes iSCSI node records that don't have active sessions.
+// This helps keep the iscsiadm database clean and speeds up discovery.
+func CleanupOrphanedNodeRecords(portal string) error {
+	// List all node records for the portal
+	cmd := exec.Command("iscsiadm", "-m", "node", "-P", "1")
+	output, err := cmd.Output()
+	if err != nil {
+		// No records is not an error
+		if strings.Contains(string(output), "No records found") {
+			return nil
+		}
+		return fmt.Errorf("failed to list node records: %v", err)
+	}
+
+	// Get active sessions
+	sessions, err := getISCSISessions()
+	if err != nil {
+		return fmt.Errorf("failed to get sessions: %w", err)
+	}
+	activeIQNs := make(map[string]bool)
+	for _, s := range sessions {
+		activeIQNs[s.IQN] = true
+	}
+
+	// Parse node records and find orphans
+	var orphanedCount int
+	lines := strings.Split(string(output), "\n")
+	var currentTarget, currentPortal string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Target:") {
+			currentTarget = strings.TrimPrefix(line, "Target: ")
+		} else if strings.HasPrefix(line, "Portal:") {
+			parts := strings.Split(strings.TrimPrefix(line, "Portal: "), ",")
+			if len(parts) > 0 {
+				currentPortal = strings.TrimSpace(parts[0])
+			}
+		}
+
+		// At the end of each record, check if it's orphaned
+		if currentTarget != "" && currentPortal != "" && strings.Contains(currentPortal, portal) {
+			if !activeIQNs[currentTarget] {
+				klog.V(4).Infof("Deleting orphaned node record for %s at %s", currentTarget, currentPortal)
+				deleteCmd := exec.Command("iscsiadm", "-m", "node", "-T", currentTarget, "-p", currentPortal, "-o", "delete")
+				if output, err := deleteCmd.CombinedOutput(); err != nil {
+					klog.V(4).Infof("Failed to delete orphaned node record: %v, output: %s", err, string(output))
+				} else {
+					orphanedCount++
+				}
+			}
+			currentTarget = ""
+			currentPortal = ""
+		}
+	}
+
+	if orphanedCount > 0 {
+		klog.Infof("Cleaned up %d orphaned iSCSI node records", orphanedCount)
 	}
 	return nil
 }

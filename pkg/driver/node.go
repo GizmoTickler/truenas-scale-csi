@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,69 @@ import (
 
 	"github.com/GizmoTickler/truenas-scale-csi/pkg/util"
 )
+
+// connectionInfoDir is where we store connection info for reliable cleanup.
+// This is typically /var/lib/kubelet/plugins/truenas-csi/connections/
+const connectionInfoDir = "/var/lib/kubelet/plugins/truenas-csi/connections"
+
+// ConnectionInfo stores session connection details for reliable cleanup during unstage.
+// This ensures we can properly disconnect iSCSI/NVMe-oF sessions even if the volume
+// is already unmounted and we can't determine the connection from the device.
+type ConnectionInfo struct {
+	Driver string `json:"driver"` // "iscsi" or "nvmeof"
+	Portal string `json:"portal,omitempty"`
+	IQN    string `json:"iqn,omitempty"`
+	NQN    string `json:"nqn,omitempty"`
+}
+
+// saveConnectionInfo saves connection details for a volume to allow reliable cleanup.
+func (d *Driver) saveConnectionInfo(volumeID string, info *ConnectionInfo) error {
+	if err := os.MkdirAll(connectionInfoDir, 0750); err != nil {
+		return fmt.Errorf("failed to create connection info directory: %w", err)
+	}
+
+	data, err := json.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("failed to marshal connection info: %w", err)
+	}
+
+	filePath := filepath.Join(connectionInfoDir, volumeID+".json")
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write connection info: %w", err)
+	}
+
+	klog.V(4).Infof("Saved connection info for volume %s: %+v", volumeID, info)
+	return nil
+}
+
+// readConnectionInfo reads saved connection details for a volume.
+func (d *Driver) readConnectionInfo(volumeID string) *ConnectionInfo {
+	filePath := filepath.Join(connectionInfoDir, volumeID+".json")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			klog.V(4).Infof("Failed to read connection info for %s: %v", volumeID, err)
+		}
+		return nil
+	}
+
+	var info ConnectionInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		klog.Warningf("Failed to parse connection info for %s: %v", volumeID, err)
+		return nil
+	}
+
+	klog.V(4).Infof("Read connection info for volume %s: %+v", volumeID, info)
+	return &info
+}
+
+// deleteConnectionInfo removes saved connection details for a volume.
+func (d *Driver) deleteConnectionInfo(volumeID string) {
+	filePath := filepath.Join(connectionInfoDir, volumeID+".json")
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		klog.V(4).Infof("Failed to delete connection info for %s: %v", volumeID, err)
+	}
+}
 
 // NodeGetCapabilities returns the capabilities of the node service.
 func (d *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
@@ -107,13 +171,30 @@ func (d *Driver) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRe
 		if err := d.stageNFSVolume(ctx, volumeContext, stagingPath); err != nil {
 			return nil, err
 		}
+		// NFS doesn't need connection info (no session to track)
 	case "iscsi":
 		if err := d.stageISCSIVolume(ctx, volumeContext, stagingPath, req.GetVolumeCapability()); err != nil {
 			return nil, err
 		}
+		// Save iSCSI connection info for reliable cleanup during unstage
+		// This ensures we can disconnect the session even if the volume is already unmounted
+		if err := d.saveConnectionInfo(volumeID, &ConnectionInfo{
+			Driver: "iscsi",
+			Portal: volumeContext["portal"],
+			IQN:    volumeContext["iqn"],
+		}); err != nil {
+			klog.Warningf("Failed to save iSCSI connection info for %s: %v", volumeID, err)
+		}
 	case "nvmeof":
 		if err := d.stageNVMeoFVolume(ctx, volumeContext, stagingPath, req.GetVolumeCapability()); err != nil {
 			return nil, err
+		}
+		// Save NVMe-oF connection info for reliable cleanup during unstage
+		if err := d.saveConnectionInfo(volumeID, &ConnectionInfo{
+			Driver: "nvmeof",
+			NQN:    volumeContext["nqn"],
+		}); err != nil {
+			klog.Warningf("Failed to save NVMe-oF connection info for %s: %v", volumeID, err)
 		}
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported attach driver: %s", attachDriver)
@@ -144,12 +225,16 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 	}
 	defer d.releaseOperationLock(lockKey)
 
+	// Read saved connection info (saved during stage for reliable cleanup)
+	// This ensures we can clean up even if the volume is already unmounted
+	connectionInfo := d.readConnectionInfo(volumeID)
+
 	// Get device path before unmounting (for session cleanup)
 	devicePath, err := util.GetDeviceFromMountPoint(stagingPath)
 	if err != nil {
-		// If not mounted, we can't get the device path, so we can't cleanup session
-		// This is expected if already unstaged
-		klog.V(4).Infof("Could not get device from mount point %s: %v", stagingPath, err)
+		// If not mounted, we can't get the device path from mount
+		// But we can still use saved connection info for cleanup
+		klog.V(4).Infof("Could not get device from mount point %s: %v (will use saved connection info)", stagingPath, err)
 	}
 
 	// Unmount staging path
@@ -175,7 +260,8 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 		klog.Warningf("Failed to remove staging directory: %v", err)
 	}
 
-	// Disconnect session if we found a device
+	// Disconnect session - try device-based lookup first, then fall back to saved connection info
+	sessionCleaned := false
 	if devicePath != "" {
 		if strings.Contains(devicePath, "nvme") {
 			// NVMe-oF cleanup
@@ -185,6 +271,7 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					klog.Warningf("Failed to disconnect NVMe-oF session %s: %v", nqn, err)
 				} else {
 					klog.Infof("Disconnected NVMe-oF session %s", nqn)
+					sessionCleaned = true
 				}
 			} else {
 				klog.V(4).Infof("Could not get NVMe info from device %s: %v", devicePath, err)
@@ -197,11 +284,44 @@ func (d *Driver) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolu
 					klog.Warningf("Failed to disconnect iSCSI session %s: %v", iqn, err)
 				} else {
 					klog.Infof("Disconnected iSCSI session %s", iqn)
+					sessionCleaned = true
 				}
 			} else {
 				klog.V(4).Infof("Could not get iSCSI info from device %s: %v", devicePath, err)
 			}
 		}
+	}
+
+	// Fallback: Use saved connection info if device-based cleanup failed or wasn't possible
+	if !sessionCleaned && connectionInfo != nil {
+		klog.V(4).Infof("Using saved connection info for session cleanup: driver=%s", connectionInfo.Driver)
+		switch connectionInfo.Driver {
+		case "iscsi":
+			if connectionInfo.Portal != "" && connectionInfo.IQN != "" {
+				if err := util.ISCSIDisconnect(connectionInfo.Portal, connectionInfo.IQN); err != nil {
+					klog.Warningf("Failed to disconnect iSCSI session %s (from saved info): %v", connectionInfo.IQN, err)
+				} else {
+					klog.Infof("Disconnected iSCSI session %s (from saved info)", connectionInfo.IQN)
+					sessionCleaned = true
+				}
+			}
+		case "nvmeof":
+			if connectionInfo.NQN != "" {
+				if err := util.NVMeoFDisconnect(connectionInfo.NQN); err != nil {
+					klog.Warningf("Failed to disconnect NVMe-oF session %s (from saved info): %v", connectionInfo.NQN, err)
+				} else {
+					klog.Infof("Disconnected NVMe-oF session %s (from saved info)", connectionInfo.NQN)
+					sessionCleaned = true
+				}
+			}
+		}
+	}
+
+	// Clean up saved connection info file
+	d.deleteConnectionInfo(volumeID)
+
+	if !sessionCleaned && (devicePath != "" || connectionInfo != nil) {
+		klog.Warningf("Session cleanup may be incomplete for volume %s - consider running cleanup", volumeID)
 	}
 
 	klog.Infof("Volume %s unstaged successfully", volumeID)

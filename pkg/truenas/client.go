@@ -65,18 +65,18 @@ func IsConnectionError(err error) bool {
 
 // ClientConfig holds the configuration for the TrueNAS client.
 type ClientConfig struct {
-	Host               string
-	Port               int
-	Protocol           string
-	APIKey             string
-	AllowInsecure      bool
-	Timeout            time.Duration
-	ConnectTimeout     time.Duration
-	MaxRetries         int           // Maximum number of connection retries (default: 3)
-	RetryInterval      time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
-	HeartbeatInterval  time.Duration // Interval for WebSocket heartbeat (default: 30s)
-	MaxConnections     int           // Maximum number of concurrent connections (default: 5)
-	MaxConcurrentReqs  int           // Maximum number of concurrent API requests (default: 10)
+	Host              string
+	Port              int
+	Protocol          string
+	APIKey            string
+	AllowInsecure     bool
+	Timeout           time.Duration
+	ConnectTimeout    time.Duration
+	MaxRetries        int           // Maximum number of connection retries (default: 3)
+	RetryInterval     time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
+	HeartbeatInterval time.Duration // Interval for WebSocket heartbeat (default: 30s)
+	MaxConnections    int           // Maximum number of concurrent connections (default: 5)
+	MaxConcurrentReqs int           // Maximum number of concurrent API requests (default: 10)
 }
 
 // writeRequest represents a request to be written to the WebSocket.
@@ -143,8 +143,8 @@ func NewConnection(id int, cfg *ClientConfig) *Connection {
 type Client struct {
 	config    *ClientConfig
 	pool      []*Connection
-	next      uint64         // For round-robin selection
-	semaphore chan struct{}  // Limits concurrent requests to prevent TrueNAS overload
+	next      uint64        // For round-robin selection
+	semaphore chan struct{} // Limits concurrent requests to prevent TrueNAS overload
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.

@@ -397,13 +397,8 @@ func getISCSISessions() ([]ISCSISession, error) {
 	return sessions, nil
 }
 
-// waitForISCSIDevice waits for the iSCSI device to appear in /dev.
-// Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
-func waitForISCSIDevice(portal, iqn string, lun int, timeout time.Duration) (string, error) {
-	return waitForISCSIDeviceWithContext(context.Background(), portal, iqn, lun, timeout)
-}
-
 // waitForISCSIDeviceWithContext waits for the iSCSI device with context support.
+// Uses exponential backoff starting at 50ms, maxing at 500ms for faster detection.
 func waitForISCSIDeviceWithContext(ctx context.Context, portal, iqn string, lun int, timeout time.Duration) (string, error) {
 	start := time.Now()
 	pollInterval := 50 * time.Millisecond
@@ -656,6 +651,7 @@ func FlushDeviceBuffers(devicePath string) error {
 
 // CleanupStaleISCSISessions removes iSCSI sessions that are no longer in use.
 // A session is considered stale if no devices exist for it.
+// If portal is non-empty, only sessions matching that portal are cleaned up.
 // This should be called periodically or after volume cleanup to prevent
 // session accumulation that can slow down discovery operations.
 func CleanupStaleISCSISessions(portal string) error {
@@ -666,6 +662,11 @@ func CleanupStaleISCSISessions(portal string) error {
 
 	var cleanedCount int
 	for _, session := range sessions {
+		// Filter by portal if specified
+		if portal != "" && !strings.Contains(session.TargetPortal, portal) {
+			continue
+		}
+
 		// Check if this session has any active devices
 		sessionDirs, err := filepath.Glob("/sys/class/iscsi_session/session*")
 		if err != nil {
@@ -829,9 +830,9 @@ func GetISCSIInfoFromDevice(devicePath string) (string, string, error) {
 		globPattern := filepath.Join(sessionDir, "iscsi_session", "session*", "targetname")
 		matches, _ := filepath.Glob(globPattern)
 		if len(matches) > 0 {
-			content, err := os.ReadFile(matches[0])
-			if err == nil {
-				iqn = strings.TrimSpace(string(content))
+			fallbackContent, readErr := os.ReadFile(matches[0])
+			if readErr == nil {
+				iqn = strings.TrimSpace(string(fallbackContent))
 			}
 		}
 	}

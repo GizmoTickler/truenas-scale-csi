@@ -33,6 +33,29 @@ var discoveryCache sync.Map // map[portal]time.Time
 // discoveryValidDuration is how long a cached discovery is considered valid.
 const discoveryValidDuration = 30 * time.Second
 
+// invalidateDiscoveryCache removes the cached discovery for a portal.
+// This should be called when a login fails due to "target not found" to force
+// a fresh discovery that includes newly created targets.
+func invalidateDiscoveryCache(portal string) {
+	discoveryCache.Delete(portal)
+	klog.V(4).Infof("Invalidated discovery cache for portal %s", portal)
+}
+
+// isTargetNotFoundError checks if the error indicates the target was not found
+// in the iscsiadm node database. This happens when the target was created after
+// the last discovery, and the cached discovery doesn't include it.
+func isTargetNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// iscsiadm returns these messages when the target node record doesn't exist
+	return strings.Contains(errStr, "No records found") ||
+		strings.Contains(errStr, "Could not find records for") ||
+		strings.Contains(errStr, "no record found") ||
+		strings.Contains(errStr, "does not exist")
+}
+
 // maxConcurrentLogins limits the number of concurrent iSCSI logins per portal.
 // TrueNAS iSCSI service can handle a few concurrent logins but gets slow with many.
 const maxConcurrentLogins = 2
@@ -99,9 +122,29 @@ func ISCSIConnectWithOptions(portal, iqn string, lun int, opts *ISCSIConnectOpti
 	klog.Infof("iSCSI discovery completed in %v", time.Since(discoveryStart))
 
 	// Login to target (also serialized per portal to prevent overload)
+	// If login fails due to target not found, invalidate cache and retry with fresh discovery
 	loginStart := time.Now()
 	if err := iscsiLoginSerialized(portal, iqn); err != nil {
-		return "", fmt.Errorf("login failed: %w", err)
+		// Check if this is a "target not found" error - the target may have been
+		// created after our cached discovery. Invalidate cache and retry once.
+		if isTargetNotFoundError(err) {
+			klog.Warningf("iSCSI login failed (target not found), invalidating discovery cache and retrying: %v", err)
+			invalidateDiscoveryCache(portal)
+
+			// Perform fresh discovery
+			if discoverErr := iscsiDiscoverySerialized(portal); discoverErr != nil {
+				return "", fmt.Errorf("fresh discovery failed after target not found: %w", discoverErr)
+			}
+			klog.Infof("Fresh iSCSI discovery completed, retrying login")
+
+			// Retry login
+			if retryErr := iscsiLoginSerialized(portal, iqn); retryErr != nil {
+				return "", fmt.Errorf("login failed after fresh discovery: %w", retryErr)
+			}
+			klog.Infof("iSCSI login succeeded after fresh discovery")
+		} else {
+			return "", fmt.Errorf("login failed: %w", err)
+		}
 	}
 	klog.Infof("iSCSI login completed in %v", time.Since(loginStart))
 

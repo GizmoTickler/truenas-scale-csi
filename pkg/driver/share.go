@@ -22,6 +22,42 @@ const (
 	zvolReadyTimeout = 30 * time.Second
 )
 
+// ensureShareExists checks if a share exists for the dataset and creates it if missing.
+// This is critical for idempotency when a volume was created but share creation failed.
+func (d *Driver) ensureShareExists(ctx context.Context, ds *truenas.Dataset, datasetName string, volumeName string, shareType string) error {
+	switch shareType {
+	case "nfs":
+		// Check if NFS share ID is stored
+		if prop, ok := ds.UserProperties[PropNFSShareID]; ok && prop.Value != "" && prop.Value != "-" {
+			klog.V(4).Infof("NFS share already exists for %s (ID: %s)", datasetName, prop.Value)
+			return nil
+		}
+		klog.Infof("NFS share missing for existing volume %s, creating...", datasetName)
+		return d.createNFSShare(ctx, datasetName, volumeName)
+
+	case "iscsi":
+		// Check if iSCSI target-extent association exists (this means full setup is complete)
+		if prop, ok := ds.UserProperties[PropISCSITargetExtentID]; ok && prop.Value != "" && prop.Value != "-" {
+			klog.V(4).Infof("iSCSI share already exists for %s (targetextent: %s)", datasetName, prop.Value)
+			return nil
+		}
+		klog.Infof("iSCSI share missing for existing volume %s, creating...", datasetName)
+		return d.createISCSIShare(ctx, datasetName, volumeName)
+
+	case "nvmeof":
+		// Check if NVMe-oF namespace ID is stored
+		if prop, ok := ds.UserProperties[PropNVMeoFNamespaceID]; ok && prop.Value != "" && prop.Value != "-" {
+			klog.V(4).Infof("NVMe-oF share already exists for %s (namespace: %s)", datasetName, prop.Value)
+			return nil
+		}
+		klog.Infof("NVMe-oF share missing for existing volume %s, creating...", datasetName)
+		return d.createNVMeoFShare(ctx, datasetName, volumeName)
+
+	default:
+		return nil
+	}
+}
+
 // createShare creates the appropriate share type (NFS, iSCSI, or NVMe-oF) for a dataset.
 // shareType should be obtained from config.GetShareType(params) to support StorageClass parameters.
 func (d *Driver) createShare(ctx context.Context, datasetName string, volumeName string, shareType string) error {

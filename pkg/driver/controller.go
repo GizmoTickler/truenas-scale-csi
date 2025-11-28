@@ -947,39 +947,80 @@ func (d *Driver) getVolumeContext(ctx context.Context, datasetName string, share
 		context["share"] = ds.Mountpoint
 
 	case "iscsi":
-		// Get target info from dataset properties
-		if prop, ok := ds.UserProperties[PropISCSITargetID]; ok {
+		// Get target info from dataset properties, with fallback to name lookup
+		var target *truenas.ISCSITarget
+
+		// Try to get target by stored property ID first
+		if prop, ok := ds.UserProperties[PropISCSITargetID]; ok && prop.Value != "" && prop.Value != "-" {
 			targetID, err := strconv.Atoi(prop.Value)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "invalid target ID: %v", err)
+			if err == nil {
+				target, err = d.truenasClient.ISCSITargetGet(ctx, targetID)
+				if err != nil {
+					klog.V(4).Infof("Failed to get iSCSI target by ID %d: %v, will try by name", targetID, err)
+				}
 			}
-			target, err := d.truenasClient.ISCSITargetGet(ctx, targetID)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get iSCSI target: %v", err)
-			}
-			globalCfg, err := d.truenasClient.ISCSIGlobalConfigGet(ctx)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get iSCSI global config: %v", err)
-			}
-			context["iqn"] = fmt.Sprintf("%s:%s", globalCfg.Basename, target.Name)
 		}
+
+		// Fallback: look up target by name (same name generation as createISCSIShare)
+		if target == nil {
+			iscsiName := path.Base(datasetName)
+			if d.config.ISCSI.NameSuffix != "" {
+				iscsiName = iscsiName + d.config.ISCSI.NameSuffix
+			}
+			target, err = d.truenasClient.ISCSITargetFindByName(ctx, iscsiName)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to find iSCSI target by name %s: %v", iscsiName, err)
+			}
+			if target == nil {
+				return nil, status.Errorf(codes.FailedPrecondition, "iSCSI target not found for volume %s (looked up by name: %s)", datasetName, iscsiName)
+			}
+			klog.V(4).Infof("Found iSCSI target by name fallback: %s (ID %d)", iscsiName, target.ID)
+		}
+
+		globalCfg, err := d.truenasClient.ISCSIGlobalConfigGet(ctx)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get iSCSI global config: %v", err)
+		}
+		context["iqn"] = fmt.Sprintf("%s:%s", globalCfg.Basename, target.Name)
 		context["portal"] = d.config.ISCSI.TargetPortal
 		context["lun"] = "0"
 		context["interface"] = d.config.ISCSI.Interface
 
 	case "nvmeof":
-		// Get subsystem info from dataset properties
-		if prop, ok := ds.UserProperties[PropNVMeoFSubsystemID]; ok {
+		// Get subsystem info from dataset properties, with fallback to name lookup
+		var subsys *truenas.NVMeoFSubsystem
+
+		// Try to get subsystem by stored property ID first
+		if prop, ok := ds.UserProperties[PropNVMeoFSubsystemID]; ok && prop.Value != "" && prop.Value != "-" {
 			subsysID, err := strconv.Atoi(prop.Value)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "invalid subsystem ID: %v", err)
+			if err == nil {
+				subsys, err = d.truenasClient.NVMeoFSubsystemGet(ctx, subsysID)
+				if err != nil {
+					klog.V(4).Infof("Failed to get NVMe-oF subsystem by ID %d: %v, will try by name", subsysID, err)
+				}
 			}
-			subsys, err := d.truenasClient.NVMeoFSubsystemGet(ctx, subsysID)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to get NVMe-oF subsystem: %v", err)
-			}
-			context["nqn"] = subsys.NQN
 		}
+
+		// Fallback: look up subsystem by NQN (same name generation as createNVMeoFShare)
+		if subsys == nil {
+			nqn := path.Base(datasetName)
+			if d.config.NVMeoF.NamePrefix != "" {
+				nqn = d.config.NVMeoF.NamePrefix + nqn
+			}
+			if d.config.NVMeoF.NameSuffix != "" {
+				nqn = nqn + d.config.NVMeoF.NameSuffix
+			}
+			subsys, err = d.truenasClient.NVMeoFSubsystemFindByNQN(ctx, nqn)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to find NVMe-oF subsystem by NQN %s: %v", nqn, err)
+			}
+			if subsys == nil {
+				return nil, status.Errorf(codes.FailedPrecondition, "NVMe-oF subsystem not found for volume %s (looked up by NQN: %s)", datasetName, nqn)
+			}
+			klog.V(4).Infof("Found NVMe-oF subsystem by NQN fallback: %s (ID %d)", nqn, subsys.ID)
+		}
+
+		context["nqn"] = subsys.NQN
 		context["transport"] = d.config.NVMeoF.Transport
 		context["address"] = d.config.NVMeoF.TransportAddress
 		context["port"] = strconv.Itoa(d.config.NVMeoF.TransportServiceID)

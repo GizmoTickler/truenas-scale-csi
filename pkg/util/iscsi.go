@@ -656,6 +656,7 @@ func FlushDeviceBuffers(devicePath string) error {
 
 // CleanupStaleISCSISessions removes iSCSI sessions that are no longer in use.
 // A session is considered stale if no devices exist for it.
+// If portal is non-empty, only sessions matching that portal are cleaned up.
 // This should be called periodically or after volume cleanup to prevent
 // session accumulation that can slow down discovery operations.
 func CleanupStaleISCSISessions(portal string) error {
@@ -666,6 +667,11 @@ func CleanupStaleISCSISessions(portal string) error {
 
 	var cleanedCount int
 	for _, session := range sessions {
+		// Filter by portal if specified
+		if portal != "" && !strings.Contains(session.TargetPortal, portal) {
+			continue
+		}
+
 		// Check if this session has any active devices
 		sessionDirs, err := filepath.Glob("/sys/class/iscsi_session/session*")
 		if err != nil {

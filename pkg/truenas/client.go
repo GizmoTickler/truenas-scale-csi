@@ -22,8 +22,68 @@ type APIError struct {
 	Data    interface{}
 }
 
+// APIErrorData represents the structured error data from TrueNAS API.
+// TrueNAS returns error details in the Data field with these fields:
+// - error: numeric error code (e.g., 22 for EINVAL)
+// - errname: error name (e.g., "ENOENT", "EINVAL", "EEXIST")
+// - reason: human-readable error reason
+// - trace: stack trace (optional)
+type APIErrorData struct {
+	Error   int    `json:"error"`
+	ErrName string `json:"errname"`
+	Reason  string `json:"reason"`
+	Trace   string `json:"trace"`
+}
+
+// Common TrueNAS API error codes
+const (
+	// JSON-RPC 2.0 standard error codes
+	ErrorCodeInvalidParams = -32602
+
+	// TrueNAS custom error codes
+	ErrorCodeTooManyConcurrentCalls = -32000
+	ErrorCodeMethodCallError        = -32001
+
+	// Unix errno values (returned in Data.error field)
+	ErrnoENOENT    = 2  // No such file or directory
+	ErrnoEEXIST    = 17 // File exists
+	ErrnoEINVAL    = 22 // Invalid argument
+	ErrnoENOTEMPTY = 39 // Directory not empty (snapshot has clones)
+	ErrnoEBUSY     = 16 // Device or resource busy
+)
+
 func (e *APIError) Error() string {
 	return fmt.Sprintf("TrueNAS API error [%d]: %s", e.Code, e.Message)
+}
+
+// GetErrorData parses the structured error data from the Data field.
+// Returns nil if Data is not in the expected format.
+func (e *APIError) GetErrorData() *APIErrorData {
+	if e.Data == nil {
+		return nil
+	}
+
+	dataMap, ok := e.Data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	errData := &APIErrorData{}
+
+	if v, ok := dataMap["error"].(float64); ok {
+		errData.Error = int(v)
+	}
+	if v, ok := dataMap["errname"].(string); ok {
+		errData.ErrName = v
+	}
+	if v, ok := dataMap["reason"].(string); ok {
+		errData.Reason = v
+	}
+	if v, ok := dataMap["trace"].(string); ok {
+		errData.Trace = v
+	}
+
+	return errData
 }
 
 // IsNotFoundError returns true if the error indicates a resource was not found.
@@ -32,9 +92,25 @@ func IsNotFoundError(err error) bool {
 		return false
 	}
 	if apiErr, ok := err.(*APIError); ok {
+		// Check structured error data first
+		if errData := apiErr.GetErrorData(); errData != nil {
+			// Check for ENOENT error name or errno
+			if errData.ErrName == "ENOENT" || errData.Error == ErrnoENOENT {
+				return true
+			}
+			// Check reason for common "not found" patterns
+			reason := strings.ToLower(errData.Reason)
+			if strings.Contains(reason, "not found") || strings.Contains(reason, "does not exist") {
+				return true
+			}
+		}
+		// Fallback to message-based detection
 		// Common "not found" error codes from TrueNAS
-		return apiErr.Code == -1 || strings.Contains(strings.ToLower(apiErr.Message), "not found") ||
-			strings.Contains(strings.ToLower(apiErr.Message), "does not exist")
+		if apiErr.Code == -1 {
+			return true
+		}
+		msg := strings.ToLower(apiErr.Message)
+		return strings.Contains(msg, "not found") || strings.Contains(msg, "does not exist")
 	}
 	errStr := strings.ToLower(err.Error())
 	return strings.Contains(errStr, "not found") || strings.Contains(errStr, "does not exist")
@@ -46,9 +122,88 @@ func IsAlreadyExistsError(err error) bool {
 		return false
 	}
 	if apiErr, ok := err.(*APIError); ok {
+		// Check structured error data first
+		if errData := apiErr.GetErrorData(); errData != nil {
+			// Check for EEXIST error name or errno
+			if errData.ErrName == "EEXIST" || errData.Error == ErrnoEEXIST {
+				return true
+			}
+			// Check reason for common "already exists" patterns
+			reason := strings.ToLower(errData.Reason)
+			if strings.Contains(reason, "already exists") {
+				return true
+			}
+		}
+		// Fallback to message-based detection
 		return strings.Contains(strings.ToLower(apiErr.Message), "already exists")
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "already exists")
+}
+
+// IsInvalidParamsError returns true if the error indicates invalid parameters.
+// Note: TrueNAS often returns "Invalid params" for multiple conditions including
+// resource not found, resource already exists, and actual validation errors.
+func IsInvalidParamsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if apiErr, ok := err.(*APIError); ok {
+		// Check for standard JSON-RPC invalid params code
+		if apiErr.Code == ErrorCodeInvalidParams {
+			return true
+		}
+		// Check structured error data
+		if errData := apiErr.GetErrorData(); errData != nil {
+			if errData.ErrName == "EINVAL" || errData.Error == ErrnoEINVAL {
+				return true
+			}
+		}
+		// Fallback to message-based detection
+		return strings.Contains(strings.ToLower(apiErr.Message), "invalid params")
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "invalid params")
+}
+
+// IsHasClonesError returns true if the error indicates a snapshot cannot be deleted
+// because it has clones.
+func IsHasClonesError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if apiErr, ok := err.(*APIError); ok {
+		// Check structured error data first
+		if errData := apiErr.GetErrorData(); errData != nil {
+			// Check for ENOTEMPTY or EBUSY which indicate clones exist
+			if errData.ErrName == "ENOTEMPTY" || errData.Error == ErrnoENOTEMPTY {
+				return true
+			}
+			if errData.ErrName == "EBUSY" || errData.Error == ErrnoEBUSY {
+				return true
+			}
+			// Check reason for clone-related patterns
+			reason := strings.ToLower(errData.Reason)
+			if strings.Contains(reason, "clone") || strings.Contains(reason, "dependent") {
+				return true
+			}
+		}
+		// Fallback to message-based detection
+		msg := strings.ToLower(apiErr.Message)
+		return strings.Contains(msg, "clone") || strings.Contains(msg, "dependent")
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "clone") || strings.Contains(errStr, "dependent")
+}
+
+// IsTooManyConcurrentCallsError returns true if the error indicates too many
+// concurrent API calls. This error should trigger a retry with backoff.
+func IsTooManyConcurrentCallsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if apiErr, ok := err.(*APIError); ok {
+		return apiErr.Code == ErrorCodeTooManyConcurrentCalls
+	}
+	return false
 }
 
 // IsConnectionError returns true if the error indicates a connection problem.
@@ -63,20 +218,26 @@ func IsConnectionError(err error) bool {
 		strings.Contains(errStr, "connection lost")
 }
 
+// IsRetryableError returns true if the error is transient and the operation
+// should be retried. This includes connection errors and "too many concurrent calls".
+func IsRetryableError(err error) bool {
+	return IsConnectionError(err) || IsTooManyConcurrentCallsError(err)
+}
+
 // ClientConfig holds the configuration for the TrueNAS client.
 type ClientConfig struct {
-	Host               string
-	Port               int
-	Protocol           string
-	APIKey             string
-	AllowInsecure      bool
-	Timeout            time.Duration
-	ConnectTimeout     time.Duration
-	MaxRetries         int           // Maximum number of connection retries (default: 3)
-	RetryInterval      time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
-	HeartbeatInterval  time.Duration // Interval for WebSocket heartbeat (default: 30s)
-	MaxConnections     int           // Maximum number of concurrent connections (default: 5)
-	MaxConcurrentReqs  int           // Maximum number of concurrent API requests (default: 10)
+	Host              string
+	Port              int
+	Protocol          string
+	APIKey            string
+	AllowInsecure     bool
+	Timeout           time.Duration
+	ConnectTimeout    time.Duration
+	MaxRetries        int           // Maximum number of connection retries (default: 3)
+	RetryInterval     time.Duration // Initial retry interval (default: 1s, exponential backoff applied)
+	HeartbeatInterval time.Duration // Interval for WebSocket heartbeat (default: 30s)
+	MaxConnections    int           // Maximum number of concurrent connections (default: 5)
+	MaxConcurrentReqs int           // Maximum number of concurrent API requests (default: 10)
 }
 
 // writeRequest represents a request to be written to the WebSocket.
@@ -143,8 +304,8 @@ func NewConnection(id int, cfg *ClientConfig) *Connection {
 type Client struct {
 	config    *ClientConfig
 	pool      []*Connection
-	next      uint64         // For round-robin selection
-	semaphore chan struct{}  // Limits concurrent requests to prevent TrueNAS overload
+	next      uint64        // For round-robin selection
+	semaphore chan struct{} // Limits concurrent requests to prevent TrueNAS overload
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.

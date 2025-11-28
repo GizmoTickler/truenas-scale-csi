@@ -3,7 +3,6 @@ package truenas
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 
 // ISCSITarget represents an iSCSI target from the TrueNAS API.
@@ -86,9 +85,16 @@ func (c *Client) ISCSITargetCreate(ctx context.Context, name string, alias strin
 
 	result, err := c.Call(ctx, "iscsi.target.create", params)
 	if err != nil {
+		// Handle "already exists" errors for idempotency
+		if IsAlreadyExistsError(err) {
+			existing, findErr := c.ISCSITargetFindByName(ctx, name)
+			if findErr == nil && existing != nil {
+				return existing, nil
+			}
+		}
 		// TrueNAS returns "Invalid params" when target already exists (not a helpful error message)
 		// Check if target exists and return it if so
-		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Invalid params") {
+		if IsInvalidParamsError(err) {
 			existing, findErr := c.ISCSITargetFindByName(ctx, name)
 			if findErr == nil && existing != nil {
 				return existing, nil
@@ -104,9 +110,17 @@ func (c *Client) ISCSITargetCreate(ctx context.Context, name string, alias strin
 func (c *Client) ISCSITargetDelete(ctx context.Context, id int, force bool) error {
 	_, err := c.Call(ctx, "iscsi.target.delete", id, force)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") ||
-			strings.Contains(err.Error(), "not found") {
+		// Handle "not found" errors as success for idempotency
+		if IsNotFoundError(err) {
 			return nil
+		}
+		// TrueNAS may return "Invalid params" when target doesn't exist
+		if IsInvalidParamsError(err) {
+			// Check if target exists - if not, treat as success
+			existing, _ := c.ISCSITargetGet(ctx, id)
+			if existing == nil {
+				return nil
+			}
 		}
 		return fmt.Errorf("failed to delete iSCSI target: %w", err)
 	}
@@ -162,9 +176,16 @@ func (c *Client) ISCSIExtentCreate(ctx context.Context, name string, diskPath st
 
 	result, err := c.Call(ctx, "iscsi.extent.create", params)
 	if err != nil {
+		// Handle "already exists" errors for idempotency
+		if IsAlreadyExistsError(err) {
+			existing, findErr := c.ISCSIExtentFindByName(ctx, name)
+			if findErr == nil && existing != nil {
+				return existing, nil
+			}
+		}
 		// TrueNAS returns "Invalid params" when extent already exists
 		// Check if extent exists and return it if so
-		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Invalid params") {
+		if IsInvalidParamsError(err) {
 			existing, findErr := c.ISCSIExtentFindByName(ctx, name)
 			if findErr == nil && existing != nil {
 				return existing, nil
@@ -180,9 +201,17 @@ func (c *Client) ISCSIExtentCreate(ctx context.Context, name string, diskPath st
 func (c *Client) ISCSIExtentDelete(ctx context.Context, id int, remove bool, force bool) error {
 	_, err := c.Call(ctx, "iscsi.extent.delete", id, remove, force)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") ||
-			strings.Contains(err.Error(), "not found") {
+		// Handle "not found" errors as success for idempotency
+		if IsNotFoundError(err) {
 			return nil
+		}
+		// TrueNAS may return "Invalid params" when extent doesn't exist
+		if IsInvalidParamsError(err) {
+			// Check if extent exists - if not, treat as success
+			existing, _ := c.ISCSIExtentGet(ctx, id)
+			if existing == nil {
+				return nil
+			}
 		}
 		return fmt.Errorf("failed to delete iSCSI extent: %w", err)
 	}
@@ -233,9 +262,16 @@ func (c *Client) ISCSITargetExtentCreate(ctx context.Context, targetID int, exte
 
 	result, err := c.Call(ctx, "iscsi.targetextent.create", params)
 	if err != nil {
+		// Handle "already exists" errors for idempotency
+		if IsAlreadyExistsError(err) {
+			existing, findErr := c.ISCSITargetExtentFind(ctx, targetID, extentID)
+			if findErr == nil && existing != nil {
+				return existing, nil
+			}
+		}
 		// TrueNAS returns "Invalid params" when association already exists
 		// Check if association exists and return it if so
-		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "Invalid params") {
+		if IsInvalidParamsError(err) {
 			existing, findErr := c.ISCSITargetExtentFind(ctx, targetID, extentID)
 			if findErr == nil && existing != nil {
 				return existing, nil
@@ -251,8 +287,12 @@ func (c *Client) ISCSITargetExtentCreate(ctx context.Context, targetID int, exte
 func (c *Client) ISCSITargetExtentDelete(ctx context.Context, id int, force bool) error {
 	_, err := c.Call(ctx, "iscsi.targetextent.delete", id, force)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") ||
-			strings.Contains(err.Error(), "not found") {
+		// Handle "not found" errors as success for idempotency
+		if IsNotFoundError(err) {
+			return nil
+		}
+		// TrueNAS may return "Invalid params" when association doesn't exist
+		if IsInvalidParamsError(err) {
 			return nil
 		}
 		return fmt.Errorf("failed to delete target-extent association: %w", err)

@@ -199,6 +199,13 @@ func (d *Driver) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest)
 			return nil, status.Errorf(codes.Internal, "failed to ensure volume properties: %v", err)
 		}
 
+		// CRITICAL: Ensure share exists for existing volumes (fixes missing iSCSI targets after retries)
+		// This handles the case where a previous CreateVolume created the dataset but failed
+		// to create the share (e.g., due to timeout, TrueNAS API error, etc.)
+		if err := d.ensureShareExists(ctx, existingDS, datasetName, name, shareType); err != nil {
+			return nil, err
+		}
+
 		volumeContext, err := d.getVolumeContext(ctx, datasetName, shareType)
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to get volume context: %v", err)

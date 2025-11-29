@@ -25,34 +25,17 @@ const (
 // ensureShareExists checks if a share exists for the dataset and creates it if missing.
 // This is critical for idempotency when a volume was created but share creation failed.
 func (d *Driver) ensureShareExists(ctx context.Context, ds *truenas.Dataset, datasetName string, volumeName string, shareType string) error {
+	// Always call the create function, which is idempotent and will verify if the
+	// share actually exists (handling cases where property is set but share is missing).
+	klog.V(4).Infof("Ensuring %s share exists for volume %s", shareType, datasetName)
+
 	switch shareType {
 	case "nfs":
-		// Check if NFS share ID is stored
-		if prop, ok := ds.UserProperties[PropNFSShareID]; ok && prop.Value != "" && prop.Value != "-" {
-			klog.V(4).Infof("NFS share already exists for %s (ID: %s)", datasetName, prop.Value)
-			return nil
-		}
-		klog.Infof("NFS share missing for existing volume %s, creating...", datasetName)
 		return d.createNFSShare(ctx, datasetName, volumeName)
-
 	case "iscsi":
-		// Check if iSCSI target-extent association exists (this means full setup is complete)
-		if prop, ok := ds.UserProperties[PropISCSITargetExtentID]; ok && prop.Value != "" && prop.Value != "-" {
-			klog.V(4).Infof("iSCSI share already exists for %s (targetextent: %s)", datasetName, prop.Value)
-			return nil
-		}
-		klog.Infof("iSCSI share missing for existing volume %s, creating...", datasetName)
 		return d.createISCSIShare(ctx, datasetName, volumeName)
-
 	case "nvmeof":
-		// Check if NVMe-oF namespace ID is stored
-		if prop, ok := ds.UserProperties[PropNVMeoFNamespaceID]; ok && prop.Value != "" && prop.Value != "-" {
-			klog.V(4).Infof("NVMe-oF share already exists for %s (namespace: %s)", datasetName, prop.Value)
-			return nil
-		}
-		klog.Infof("NVMe-oF share missing for existing volume %s, creating...", datasetName)
 		return d.createNVMeoFShare(ctx, datasetName, volumeName)
-
 	default:
 		return nil
 	}
@@ -100,11 +83,18 @@ func (d *Driver) createNFSShare(ctx context.Context, datasetName string, volumeN
 		return status.Errorf(codes.Internal, "failed to get dataset: %v", err)
 	}
 
-	// Check if share already exists
+	// Check if share already exists (idempotency)
 	existingProp, _ := d.truenasClient.DatasetGetUserProperty(ctx, datasetName, PropNFSShareID)
 	if existingProp != "" && existingProp != "-" {
-		klog.Infof("NFS share already exists for %s", datasetName)
-		return nil
+		shareID, err := strconv.Atoi(existingProp)
+		if err == nil {
+			// Verify it actually exists
+			if _, err := d.truenasClient.NFSShareGet(ctx, shareID); err == nil {
+				klog.Infof("NFS share already exists for %s (ID %d)", datasetName, shareID)
+				return nil
+			}
+			klog.Warningf("Stored NFS share ID %d not found, recreating...", shareID)
+		}
 	}
 
 	// Create NFS share
@@ -172,17 +162,34 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 	diskPath := fmt.Sprintf("zvol/%s", datasetName)
 
 	// Step 1: Check if already fully configured (idempotency fast-path)
+	// We must verify not just the property, but that the resources actually exist.
 	existingTE, _ := d.truenasClient.DatasetGetUserProperty(ctx, datasetName, PropISCSITargetExtentID)
-	if existingTE != "" && existingTE != "-" {
-		// Verify the target-extent still exists
-		teID, err := strconv.Atoi(existingTE)
-		if err == nil {
-			if _, err := d.truenasClient.ISCSITargetExtentFind(ctx, 0, 0); err == nil {
-				klog.Infof("iSCSI share already fully configured for %s (targetextent=%d)", datasetName, teID)
-				return nil
+	existingTgt, _ := d.truenasClient.DatasetGetUserProperty(ctx, datasetName, PropISCSITargetID)
+	existingExt, _ := d.truenasClient.DatasetGetUserProperty(ctx, datasetName, PropISCSIExtentID)
+
+	if existingTE != "" && existingTE != "-" && existingTgt != "" && existingTgt != "-" && existingExt != "" && existingExt != "-" {
+		teID, errTE := strconv.Atoi(existingTE)
+		tgtID, errTgt := strconv.Atoi(existingTgt)
+		extID, errExt := strconv.Atoi(existingExt)
+
+		if errTE == nil && errTgt == nil && errExt == nil {
+			// Verify everything exists
+			// Check target
+			if _, err := d.truenasClient.ISCSITargetGet(ctx, tgtID); err == nil {
+				// Check extent
+				if _, err := d.truenasClient.ISCSIExtentGet(ctx, extID); err == nil {
+					// Check association
+					if assoc, err := d.truenasClient.ISCSITargetExtentFind(ctx, tgtID, extID); err == nil && assoc != nil {
+						// Double check association ID matches
+						if assoc.ID == teID {
+							klog.Infof("iSCSI share already fully configured for %s (target=%d, extent=%d, assoc=%d)", datasetName, tgtID, extID, teID)
+							return nil
+						}
+					}
+				}
 			}
 		}
-		klog.V(4).Infof("Stored target-extent ID %s invalid or not found, will recreate", existingTE)
+		klog.V(4).Infof("Stored iSCSI properties invalid or resources missing, will verify/recreate")
 	}
 
 	// Step 2: Find or create target (idempotent)
@@ -368,8 +375,9 @@ func (d *Driver) createISCSIShare(ctx context.Context, datasetName string, volum
 	// before TrueNAS's iSCSI daemon has picked up the configuration change.
 	klog.V(4).Infof("Reloading iSCSI service to ensure target is discoverable")
 	if err := d.truenasClient.ServiceReload(ctx, "iscsitarget"); err != nil {
-		// Non-fatal: the service might auto-reload, and node has retry logic
-		klog.V(4).Infof("iSCSI service reload returned (may be normal): %v", err)
+		// Log error but continue - often this is not fatal, but if it is,
+		// the node will fail to attach and retry.
+		klog.Warningf("iSCSI service reload failed (node attachment might be delayed): %v", err)
 	}
 
 	klog.Infof("iSCSI share setup complete for %s: target=%d, extent=%d, targetextent=%d (took %v)",
@@ -465,11 +473,18 @@ func (d *Driver) deleteISCSIShare(ctx context.Context, datasetName string) error
 
 // createNVMeoFShare creates NVMe-oF subsystem and namespace.
 func (d *Driver) createNVMeoFShare(ctx context.Context, datasetName string, volumeName string) error {
-	// Check if already configured
+	// Check if already configured (idempotency)
 	existingProp, _ := d.truenasClient.DatasetGetUserProperty(ctx, datasetName, PropNVMeoFNamespaceID)
 	if existingProp != "" && existingProp != "-" {
-		klog.Infof("NVMe-oF share already exists for %s", datasetName)
-		return nil
+		nsID, err := strconv.Atoi(existingProp)
+		if err == nil {
+			// Verify it actually exists
+			if _, err := d.truenasClient.NVMeoFNamespaceGet(ctx, nsID); err == nil {
+				klog.Infof("NVMe-oF share already exists for %s (namespace %d)", datasetName, nsID)
+				return nil
+			}
+			klog.Warningf("Stored NVMe-oF namespace ID %d not found, recreating...", nsID)
+		}
 	}
 
 	// Generate NVMe-oF NQN

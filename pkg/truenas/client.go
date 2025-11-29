@@ -680,6 +680,14 @@ func (c *Connection) CallWithContext(ctx context.Context, method string, params 
 
 // Close closes the connection.
 func (c *Connection) Close() error {
+	// Attempt graceful logout if connected
+	if c.IsConnected() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		// We ignore the error because we are closing anyway
+		_, _ = c.CallWithContext(ctx, "auth.logout")
+		cancel()
+	}
+
 	c.mu.Lock()
 	c.closed = true
 	conn := c.conn
